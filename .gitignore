@@ -1,5 +1,6 @@
 # Visual Studio / WinUI local state
 .vs/
+.vscode/
 *.user
 *.suo
 *.userosscache
@@ -71,3 +72,4 @@ credentials*.json
 # Codex/local agent scratch
 .agents/
 .codex/
+.git-backups/

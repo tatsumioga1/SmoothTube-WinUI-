@@ -1,0 +1,74 @@
+<Page
+    x:Class="SmoothTube.LibraryPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:local="using:SmoothTube.Models"
+    xmlns:controls="using:SmoothTube.Controls">
+
+    <ScrollViewer>
+
+        <StackPanel
+            Padding="40,24,40,24"
+            Spacing="24">
+
+            <TextBlock
+                Text="Library"
+                FontSize="42"
+                FontWeight="Bold"/>
+
+            <TextBlock
+                Text="Continue Watching"
+                FontSize="28"
+                FontWeight="SemiBold"/>
+
+            <TextBlock
+                Text="{x:Bind StatusText}"
+                TextWrapping="Wrap"
+                Opacity="0.75"/>
+
+            <ItemsControl
+                ItemsSource="{x:Bind ContinueWatchingVideos}">
+
+                <ItemsControl.ItemsPanel>
+                    <ItemsPanelTemplate>
+                        <WrapGrid
+                            Orientation="Horizontal"
+                            ItemWidth="260"
+                            ItemHeight="230"/>
+                    </ItemsPanelTemplate>
+                </ItemsControl.ItemsPanel>
+
+                <ItemsControl.ItemTemplate>
+
+                    <DataTemplate x:DataType="local:VideoItem">
+
+                        <Border
+                            Margin="0,0,16,16"
+                            Tapped="VideoCard_Tapped">
+
+                            <controls:VideoCardControl
+                                CardWidth="240"
+                                CardHeight="215"
+                                ThumbnailHeight="135"
+                                Title="{x:Bind Title}"
+                                Channel="{x:Bind Channel}"
+                                Views="{x:Bind Views}"
+                                Duration="{x:Bind Duration}"
+                                IsLive="{x:Bind IsLive}"
+                                IsPremiere="{x:Bind IsPremiere}"
+                                Thumbnail="{x:Bind Thumbnail}"
+                                Progress="{x:Bind Progress}"/>
+
+                        </Border>
+
+                    </DataTemplate>
+
+                </ItemsControl.ItemTemplate>
+
+            </ItemsControl>
+
+        </StackPanel>
+
+    </ScrollViewer>
+
+</Page>

@@ -1,0 +1,118 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Window
+    x:Class="SmoothTube.MainWindow"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d"
+    Title="SmoothTube">
+
+    <Window.SystemBackdrop>
+        <MicaBackdrop />
+    </Window.SystemBackdrop>
+
+        <Grid
+            x:Name="RootGrid"
+            Background="Transparent">
+
+        <Grid.RowDefinitions>
+            <RowDefinition Height="40"/>
+            <RowDefinition Height="*"/>
+        </Grid.RowDefinitions>
+
+        <!-- Custom Title Bar -->
+
+        <Grid
+            x:Name="AppTitleBar"
+            Grid.Row="0"
+            Background="Transparent">
+
+            <TextBlock
+                Margin="16,0,0,0"
+                VerticalAlignment="Center"
+                Text="SmoothTube"
+                FontWeight="SemiBold"
+                Opacity="0.9"/>
+
+        </Grid>
+
+        <!-- Main App -->
+
+        <NavigationView
+            x:Name="AppNavigation"
+            Grid.Row="1"
+            PaneDisplayMode="Left"
+            IsBackButtonVisible="Collapsed"
+            IsSettingsVisible="True"
+            Background="Transparent"
+            ItemInvoked="AppNavigation_ItemInvoked"
+            Expanding="AppNavigation_Expanding"
+            SelectionChanged="AppNavigation_SelectionChanged">
+
+            <NavigationView.MenuItems>
+
+                <NavigationViewItem
+                    Content="Home"
+                    Tag="Home">
+
+                    <NavigationViewItem.Icon>
+                        <SymbolIcon Symbol="Home"/>
+                    </NavigationViewItem.Icon>
+
+                </NavigationViewItem>
+
+                <NavigationViewItem
+                    Content="Search"
+                    Tag="Search">
+
+                    <NavigationViewItem.Icon>
+                        <SymbolIcon Symbol="Find"/>
+                    </NavigationViewItem.Icon>
+
+                </NavigationViewItem>
+
+                <NavigationViewItem
+                    Content="Library"
+                    Tag="Library">
+
+                    <NavigationViewItem.Icon>
+                        <SymbolIcon Symbol="AllApps"/>
+                    </NavigationViewItem.Icon>
+
+                </NavigationViewItem>
+
+                <NavigationViewItem
+                    x:Name="SubscriptionsNavItem"
+                    Content="Subscriptions"
+                    Tag="Subscriptions">
+
+                    <NavigationViewItem.Icon>
+                        <SymbolIcon Symbol="People"/>
+                    </NavigationViewItem.Icon>
+
+                </NavigationViewItem>
+
+                <NavigationViewItem
+                    x:Name="SubscriptionChannelsNavItem"
+                    Content="Channels"
+                    IsExpanded="True"
+                    Tag="SubscriptionChannels">
+
+                    <NavigationViewItem.Icon>
+                        <SymbolIcon Symbol="Contact"/>
+                    </NavigationViewItem.Icon>
+
+                </NavigationViewItem>
+
+            </NavigationView.MenuItems>
+
+            <Frame
+                x:Name="ContentFrame"
+                Background="Transparent"/>
+
+        </NavigationView>
+
+    </Grid>
+
+</Window>

@@ -1,0 +1,191 @@
+<Page
+    x:Class="SmoothTube.ChannelPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:local="using:SmoothTube.Models"
+    xmlns:controls="using:SmoothTube.Controls">
+
+    <ScrollViewer>
+
+        <StackPanel
+            Padding="40,24,40,24"
+            Spacing="24">
+
+            <Button
+                Content="Back"
+                HorizontalAlignment="Left"
+                Click="BackButton_Click"/>
+
+            <Border
+                x:Name="ChannelBanner"
+                Height="180"
+                CornerRadius="14"
+                Background="#1F1F1F">
+
+                <Grid>
+
+                <Image
+                    x:Name="ChannelBannerImage"
+                    Stretch="UniformToFill"/>
+
+                    <TextBlock
+                        x:Name="ChannelBannerPlaceholder"
+                        Text="{x:Bind Channel.Title}"
+                        FontSize="34"
+                        FontWeight="SemiBold"
+                        HorizontalAlignment="Center"
+                        VerticalAlignment="Center"
+                        Opacity="0.45"/>
+
+                </Grid>
+
+            </Border>
+
+            <Grid ColumnSpacing="20">
+
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="96"/>
+                    <ColumnDefinition Width="*"/>
+                </Grid.ColumnDefinitions>
+
+                <Border
+                    Width="88"
+                    Height="88"
+                    CornerRadius="44"
+                    Background="#1F1F1F">
+
+                    <Image
+                        x:Name="ChannelThumbnailImage"
+                        Stretch="UniformToFill"/>
+
+                </Border>
+
+                <StackPanel
+                    Grid.Column="1"
+                    VerticalAlignment="Center"
+                    Spacing="6">
+
+                    <TextBlock
+                        Text="{x:Bind Channel.Title}"
+                        FontSize="36"
+                        FontWeight="Bold"/>
+
+                    <TextBlock
+                        Text="{x:Bind Channel.Description}"
+                        TextWrapping="Wrap"
+                        MaxLines="2"
+                        Opacity="0.75"/>
+
+                </StackPanel>
+
+            </Grid>
+
+            <TextBlock
+                Text="{x:Bind StatusText}"
+                TextWrapping="Wrap"
+                Opacity="0.75"/>
+
+            <Pivot>
+
+                <PivotItem Header="Uploads">
+
+            <ItemsControl
+                ItemsSource="{x:Bind UploadVideos}">
+
+                <ItemsControl.ItemsPanel>
+                    <ItemsPanelTemplate>
+                        <WrapGrid
+                            Orientation="Horizontal"
+                            ItemWidth="260"
+                            ItemHeight="255"/>
+                    </ItemsPanelTemplate>
+                </ItemsControl.ItemsPanel>
+
+                <ItemsControl.ItemTemplate>
+
+                    <DataTemplate x:DataType="local:VideoItem">
+
+                        <Border
+                            Margin="0,0,20,20"
+                            Tapped="VideoCard_Tapped">
+
+                            <controls:VideoCardControl
+                                CardWidth="240"
+                                CardHeight="235"
+                                ThumbnailHeight="135"
+                                Title="{x:Bind Title}"
+                                Channel="{x:Bind Channel}"
+                                Views="{x:Bind Views}"
+                                Duration="{x:Bind Duration}"
+                                IsLive="{x:Bind IsLive}"
+                                IsPremiere="{x:Bind IsPremiere}"
+                                Thumbnail="{x:Bind Thumbnail}"
+                                ShowProgress="False"/>
+
+                        </Border>
+
+                    </DataTemplate>
+
+                </ItemsControl.ItemTemplate>
+
+            </ItemsControl>
+
+                </PivotItem>
+
+                <PivotItem Header="Livestreams">
+
+            <ItemsControl
+                ItemsSource="{x:Bind LivestreamVideos}">
+
+                <ItemsControl.ItemsPanel>
+                    <ItemsPanelTemplate>
+                        <WrapGrid
+                            Orientation="Horizontal"
+                            ItemWidth="260"
+                            ItemHeight="255"/>
+                    </ItemsPanelTemplate>
+                </ItemsControl.ItemsPanel>
+
+                <ItemsControl.ItemTemplate>
+
+                    <DataTemplate x:DataType="local:VideoItem">
+
+                        <Border
+                            Margin="0,0,20,20"
+                            Tapped="VideoCard_Tapped">
+
+                            <controls:VideoCardControl
+                                CardWidth="240"
+                                CardHeight="235"
+                                ThumbnailHeight="135"
+                                Title="{x:Bind Title}"
+                                Channel="{x:Bind Channel}"
+                                Views="{x:Bind Views}"
+                                Duration="{x:Bind Duration}"
+                                IsLive="{x:Bind IsLive}"
+                                IsPremiere="{x:Bind IsPremiere}"
+                                Thumbnail="{x:Bind Thumbnail}"
+                                ShowProgress="False"/>
+
+                        </Border>
+
+                    </DataTemplate>
+
+                </ItemsControl.ItemTemplate>
+
+            </ItemsControl>
+
+                </PivotItem>
+
+            </Pivot>
+
+            <Button
+                Content="Load more"
+                HorizontalAlignment="Center"
+                Click="LoadMoreButton_Click"/>
+
+        </StackPanel>
+
+    </ScrollViewer>
+
+</Page>

@@ -1,0 +1,152 @@
+<UserControl
+    x:Class="SmoothTube.Controls.VideoCardControl"
+    x:Name="Root"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <Border
+        Width="{Binding CardWidth, ElementName=Root}"
+        Height="{Binding CardHeight, ElementName=Root}"
+        CornerRadius="16"
+        Background="#1F1F1F"
+        PointerEntered="Card_PointerEntered"
+        PointerExited="Card_PointerExited">
+
+        <Grid>
+
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="*" />
+
+            </Grid.RowDefinitions>
+
+            <!-- Thumbnail -->
+
+            <Border
+                Grid.Row="0"
+                Width="{Binding CardWidth, ElementName=Root}"
+                Height="{Binding ThumbnailHeight, ElementName=Root}"
+                CornerRadius="16,16,0,0">
+
+                <Grid>
+
+                <Image
+                    x:Name="ThumbnailImage"
+                    Width="{Binding CardWidth, ElementName=Root}"
+                    Height="{Binding ThumbnailHeight, ElementName=Root}"
+                    Stretch="UniformToFill"
+                    VerticalAlignment="Center"
+                    HorizontalAlignment="Center"
+                    RenderTransformOrigin="0.5,0.5">
+
+                    <Image.RenderTransform>
+                        <ScaleTransform
+                            ScaleX="1.025"
+                            ScaleY="1.025"/>
+                    </Image.RenderTransform>
+
+                </Image>
+
+                <Border
+                    x:Name="DurationBadge"
+                    Margin="8"
+                    Padding="6,2"
+                    CornerRadius="4"
+                    HorizontalAlignment="Right"
+                    VerticalAlignment="Bottom"
+                    Background="#D9000000">
+
+                    <TextBlock
+                        Text="{Binding Duration, ElementName=Root}"
+                        FontSize="12"
+                        FontWeight="SemiBold"/>
+
+                </Border>
+
+                <Border
+                    x:Name="PremiereBadge"
+                    Margin="8"
+                    Padding="7,3"
+                    CornerRadius="4"
+                    HorizontalAlignment="Left"
+                    VerticalAlignment="Bottom"
+                    Background="#D98A4B00">
+
+                    <TextBlock
+                        Text="PREMIERE"
+                        FontSize="11"
+                        FontWeight="Bold"/>
+
+                </Border>
+
+                <Border
+                    x:Name="LiveBadge"
+                    Margin="8"
+                    Padding="7,3"
+                    CornerRadius="4"
+                    HorizontalAlignment="Left"
+                    VerticalAlignment="Bottom"
+                    Background="#D91F1F">
+
+                    <StackPanel
+                        Orientation="Horizontal"
+                        Spacing="4">
+
+                        <Ellipse
+                            Width="6"
+                            Height="6"
+                            Fill="White"
+                            VerticalAlignment="Center"/>
+
+                        <TextBlock
+                            Text="LIVE"
+                            FontSize="11"
+                            FontWeight="Bold"/>
+
+                    </StackPanel>
+
+                </Border>
+
+                </Grid>
+
+            </Border>
+
+            <!-- Metadata -->
+
+            <StackPanel
+                Grid.Row="1"
+                Margin="12,10,12,10">
+
+                <TextBlock
+                    Text="{Binding Title, ElementName=Root}"
+                    FontSize="16"
+                    FontWeight="SemiBold"
+                    TextWrapping="WrapWholeWords"
+                    MaxLines="2"/>
+
+                <TextBlock
+                    Margin="0,2,0,0"
+                    Text="{Binding Channel, ElementName=Root}"
+                    Opacity="0.75"
+                    FontSize="13"/>
+
+                <TextBlock
+                    Text="{Binding Views, ElementName=Root}"
+                    Opacity="0.75"
+                    FontSize="12"/>
+
+                <ProgressBar
+                    x:Name="ProgressBarControl"
+                    Margin="0,8,0,0"
+                    Height="4"
+                    Minimum="0"
+                    Maximum="100"
+                    Value="{Binding Progress, ElementName=Root}"/>
+
+            </StackPanel>
+
+        </Grid>
+
+    </Border>
+
+</UserControl>

@@ -1,0 +1,115 @@
+<Page
+    x:Class="SmoothTube.SettingsPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <ScrollViewer>
+
+        <StackPanel
+            Padding="40,24,40,24"
+            Spacing="24"
+            MaxWidth="760"
+            HorizontalAlignment="Left">
+
+            <TextBlock
+                Text="Settings"
+                FontSize="42"
+                FontWeight="Bold"/>
+
+            <StackPanel Spacing="12">
+
+                <TextBlock
+                    Text="YouTube Data API key"
+                    FontSize="22"
+                    FontWeight="SemiBold"/>
+
+                <PasswordBox
+                    x:Name="ApiKeyBox"
+                    PlaceholderText="Paste API key"
+                    MaxWidth="520"
+                    HorizontalAlignment="Stretch"/>
+
+                <StackPanel
+                    Orientation="Horizontal"
+                    Spacing="12">
+
+                    <Button
+                        Content="Save"
+                        Click="SaveApiKey_Click"/>
+
+                    <Button
+                        Content="Clear"
+                        Click="ClearApiKey_Click"/>
+
+                </StackPanel>
+
+                <TextBlock
+                    x:Name="ApiKeyStatusText"
+                    TextWrapping="Wrap"
+                    Opacity="0.75"/>
+
+            </StackPanel>
+
+            <StackPanel Spacing="8">
+
+                <TextBlock
+                    Text="Data source"
+                    FontSize="22"
+                    FontWeight="SemiBold"/>
+
+                <TextBlock
+                    Text="Without an API key, SmoothTube uses its local sample catalog. With a key, Search and category rows request YouTube video metadata."
+                    TextWrapping="Wrap"
+                    Opacity="0.75"/>
+
+            </StackPanel>
+
+            <StackPanel Spacing="12">
+
+                <TextBlock
+                    Text="Google account"
+                    FontSize="22"
+                    FontWeight="SemiBold"/>
+
+                <TextBox
+                    x:Name="OAuthClientIdBox"
+                    PlaceholderText="OAuth desktop client ID"
+                    MaxWidth="520"
+                    HorizontalAlignment="Stretch"/>
+
+                <PasswordBox
+                    x:Name="OAuthClientSecretBox"
+                    PlaceholderText="OAuth desktop client secret"
+                    MaxWidth="520"
+                    HorizontalAlignment="Stretch"/>
+
+                <StackPanel
+                    Orientation="Horizontal"
+                    Spacing="12">
+
+                    <Button
+                        Content="Save OAuth"
+                        Click="SaveOAuthClientId_Click"/>
+
+                    <Button
+                        Content="Sign in"
+                        Click="SignIn_Click"/>
+
+                    <Button
+                        Content="Sign out"
+                        Click="SignOut_Click"/>
+
+                </StackPanel>
+
+                <TextBlock
+                    x:Name="OAuthStatusText"
+                    TextWrapping="Wrap"
+                    Opacity="0.75"/>
+
+            </StackPanel>
+
+        </StackPanel>
+
+    </ScrollViewer>
+
+</Page>
