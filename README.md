@@ -6,7 +6,7 @@ SmoothTube is a native Windows 11 YouTube client built with WinUI 3. It explores
 
 ## Overview
 
-SmoothTube was built as a WinUI 3 desktop app with a modern Windows layout, local settings, WebView2 playback, and YouTube Data API integration. The app is designed around a simple idea: keep the browsing experience native and fast, while using official YouTube surfaces for playback and user-controlled Google credentials for API access.
+SmoothTube was built as a WinUI 3 desktop app with a modern Windows layout, local settings, WebView2 playback, YouTube Data API integration, and public metadata fallbacks through Invidious/Piped-style endpoints. The app is designed around a simple idea: keep the browsing experience native and fast, while using official YouTube surfaces for playback and user-controlled Google credentials for account-specific API access.
 
 ## Features
 
@@ -21,6 +21,7 @@ SmoothTube was built as a WinUI 3 desktop app with a modern Windows layout, loca
 - Local watch history and continue-watching support.
 - Google OAuth sign-in using PKCE and a localhost callback.
 - YouTube Data API support for search, metadata, comments, subscriptions, channels, and live chat where available.
+- Invidious/Piped-style public endpoint fallbacks for non-authenticated home/search metadata when available.
 - WebView2 fallback option for videos that cannot be embedded by owner choice.
 
 ## Project Structure
@@ -58,7 +59,7 @@ SmoothTube is built around a small set of layers:
 - **WinUI 3 shell**: `MainWindow.xaml` hosts the desktop navigation and page frame.
 - **Pages**: Home, Search, Library, Subscriptions, Channel, Video, and Settings are separate XAML pages.
 - **Reusable cards**: video cards are implemented as shared controls so thumbnails, duration badges, live/premiere tags, and progress state are consistent across the app.
-- **Service layer**: `IYouTubeService` and `YouTubeService` centralize YouTube Data API calls, metadata enrichment, fallback parsing, subscription loading, comments, live chat, and channel data.
+- **Service layer**: `IYouTubeService` and `YouTubeService` centralize YouTube Data API calls, Invidious/Piped-style fallback queries, metadata enrichment, fallback parsing, subscription loading, comments, live chat, and channel data.
 - **Settings layer**: `AppSettings` stores API keys, OAuth client details, and tokens in local Windows app settings.
 - **OAuth layer**: `GoogleOAuthService` implements Google sign-in using PKCE and a localhost redirect.
 - **Playback layer**: videos play through WebView2 using official YouTube embed/player surfaces.
@@ -118,10 +119,11 @@ SmoothTube uses a combination of:
 
 - YouTube Data API for official metadata and authenticated data.
 - OAuth for user-authorized subscription and account-related access.
+- Invidious/Piped-style public endpoints for limited unauthenticated home/search fallback metadata.
 - WebView2 for official YouTube playback surfaces.
 - Local caching to reduce repeated subscription loading.
 
-Some YouTube data is dependent on API availability, quota, video owner settings, and what YouTube exposes through official endpoints. Videos with embedding disabled are handled through a YouTube watch option rather than bypassing restrictions.
+Some YouTube data is dependent on API availability, quota, video owner settings, public endpoint availability, and what YouTube exposes through official endpoints. Public fallback endpoints can change, go offline, rate-limit requests, or return incomplete metadata. Videos with embedding disabled are handled through a YouTube watch option rather than bypassing restrictions.
 
 ## Current Limitations
 
@@ -129,6 +131,7 @@ Some YouTube data is dependent on API availability, quota, video owner settings,
 - Some videos cannot be embedded because the owner disables playback on other websites.
 - Live chat and comment functionality is read-oriented where available.
 - API quota and Google account permissions affect which features are available.
+- Invidious/Piped-style fallback data is best-effort and may vary by public instance availability.
 - Downloads are not implemented because SmoothTube should not bypass YouTube restrictions or unsupported offline flows.
 
 ## Roadmap
