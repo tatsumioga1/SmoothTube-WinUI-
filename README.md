@@ -6,7 +6,7 @@ SmoothTube is a native Windows 11 YouTube client built with WinUI 3. It explores
 
 ## Overview
 
-SmoothTube was built as a WinUI 3 desktop app with a modern Windows layout, local settings, WebView2 playback, YouTube Data API integration, and public metadata fallbacks through Invidious/Piped-style endpoints. The app is designed around a simple idea: keep the browsing experience native and fast, while using official YouTube surfaces for playback and user-controlled Google credentials for account-specific API access.
+SmoothTube was built as a WinUI 3 desktop app with a modern Windows layout, local settings, WebView2 playback, YouTube Data API integration, and public metadata fallbacks through Invidious/Piped-style endpoints. The app is designed around a simple idea: keep the browsing experience native and fast, while using official YouTube surfaces for playback and user-controlled Google credentials for account-specific API access. The app still is under development and can be unstable but it is stable enough for use, thought some features may present bugs. Proceed with patience xD.
 
 ## Features
 
@@ -149,4 +149,4 @@ Contributions are welcome. Please avoid committing local credentials, generated 
 
 ## License
 
-See the project license file for details.
+MIT License
