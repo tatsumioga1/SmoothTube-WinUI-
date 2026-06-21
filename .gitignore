@@ -1,0 +1,73 @@
+# Visual Studio / WinUI local state
+.vs/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+
+# Build output
+bin/
+obj/
+[Dd]ebug/
+[Rr]elease/
+x64/
+x86/
+arm64/
+bld/
+dist/
+
+# Windows app packaging output
+AppPackages/
+BundleArtifacts/
+Generated Files/
+*.appx
+*.appxbundle
+*.appxsym
+*.msix
+*.msixbundle
+*.msixupload
+*.cer
+*.pfx
+*.assets.cache
+
+# NuGet / tooling
+packages/
+*.nupkg
+project.lock.json
+project.assets.json
+.nuget/
+
+# Test / analysis output
+TestResults/
+*.trx
+*.coverage
+*.coveragexml
+coverage/
+
+# Logs and temp files
+*.log
+*.tmp
+*.temp
+*.cache
+*.bak
+*.swp
+*.orig
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# Local configuration and credentials
+appsettings.Local.json
+appsettings.Development.json
+secrets.json
+*.secrets.json
+client_secret*.json
+oauth*.json
+token*.json
+credentials*.json
+.env
+.env.*
+
+# Codex/local agent scratch
+.agents/
+.codex/
