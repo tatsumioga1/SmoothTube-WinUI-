@@ -5,6 +5,7 @@ using SmoothTube.Models;
 using SmoothTube.Services;
 using System.Collections.ObjectModel;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading.Tasks;
 
 namespace SmoothTube
@@ -26,6 +27,10 @@ namespace SmoothTube
         public Visibility LoadingVisibility { get; set; } = Visibility.Visible;
 
         public Visibility VideosVisibility { get; set; } = Visibility.Collapsed;
+
+        public Visibility LoadMoreVisibility { get; set; } = Visibility.Collapsed;
+
+        private bool isLoadingMore;
 
         public HomePage()
         {
@@ -78,6 +83,10 @@ namespace SmoothTube
                 StatusText = "";
                 LoadingVisibility = Visibility.Collapsed;
                 VideosVisibility = Visibility.Visible;
+                LoadMoreVisibility =
+                    Videos.Count > 0
+                        ? Visibility.Visible
+                        : Visibility.Collapsed;
                 Bindings.Update();
             }
             catch (System.Exception)
@@ -87,8 +96,50 @@ namespace SmoothTube
                 VideosVisibility = Videos.Count > 0
                     ? Visibility.Visible
                     : Visibility.Collapsed;
+                LoadMoreVisibility = VideosVisibility;
             }
 
+            Bindings.Update();
+        }
+
+        private async void LoadMoreButton_Click(
+            object sender,
+            RoutedEventArgs e)
+        {
+            if (isLoadingMore)
+                return;
+
+            isLoadingMore = true;
+            StatusText = "Loading more recommendations...";
+            LoadMoreVisibility = Visibility.Collapsed;
+            Bindings.Update();
+
+            try
+            {
+                List<VideoItem> moreVideos =
+                    await ServiceLocator.YouTube.GetMoreHomeVideosAsync(
+                        Videos.Select(video => video.Id));
+
+                foreach (VideoItem video in moreVideos)
+                {
+                    if (Videos.All(item => item.Id != video.Id))
+                    {
+                        Videos.Add(video);
+                    }
+                }
+
+                StatusText =
+                    moreVideos.Count == 0
+                        ? "No more recommendations returned right now."
+                        : "";
+            }
+            catch (System.Exception)
+            {
+                StatusText = "Could not load more recommendations.";
+            }
+
+            isLoadingMore = false;
+            LoadMoreVisibility = Visibility.Visible;
             Bindings.Update();
         }
 

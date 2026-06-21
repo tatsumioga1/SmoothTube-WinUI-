@@ -53,6 +53,7 @@
             <NavigationView.MenuItems>
 
                 <NavigationViewItem
+                    x:Name="HomeNavItem"
                     Content="Home"
                     Tag="Home">
 

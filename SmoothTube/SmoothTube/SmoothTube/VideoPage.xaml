@@ -185,39 +185,42 @@
 
                 <StackPanel
                     x:Name="VideoInfoPanel"
-                    Spacing="8">
+                    Spacing="10">
 
                     <TextBlock
                         Text="{Binding Title}"
                         FontSize="36"
                         FontWeight="Bold"/>
 
-                    <Button
-                        x:Name="ChannelButton"
-                        Padding="0"
-                        HorizontalAlignment="Left"
-                        Background="Transparent"
-                        BorderThickness="0"
-                        Click="ChannelButton_Click">
-
-                        <TextBlock
-                            Text="{Binding Channel}"
-                            FontSize="20"
-                            Opacity="0.85"/>
-
-                    </Button>
-
-                    <TextBlock
-                        Text="{Binding Views}"
-                        Opacity="0.7"/>
-
-                    <TextBlock
-                        Text="{Binding PublishedAt}"
-                        Opacity="0.7"/>
-
                     <StackPanel
                         Orientation="Horizontal"
-                        Spacing="10">
+                        Spacing="12"
+                        VerticalAlignment="Center">
+
+                        <Button
+                            x:Name="ChannelButton"
+                            Padding="0"
+                            HorizontalAlignment="Left"
+                            Background="Transparent"
+                            BorderThickness="0"
+                            Click="ChannelButton_Click">
+
+                            <TextBlock
+                                Text="{Binding Channel}"
+                                FontSize="20"
+                                Opacity="0.85"/>
+
+                        </Button>
+
+                        <TextBlock
+                            Text="{Binding PublishedAt}"
+                            VerticalAlignment="Center"
+                            Opacity="0.7"/>
+
+                        <Button
+                            x:Name="SubscribeButton"
+                            Content="Subscribe"
+                            Click="SubscribeButton_Click"/>
 
                         <Button
                             x:Name="LikeButton"
@@ -236,6 +239,16 @@
                             <SymbolIcon Symbol="Dislike"/>
 
                         </Button>
+
+                    </StackPanel>
+
+                    <StackPanel
+                        Orientation="Horizontal"
+                        Spacing="14">
+
+                        <TextBlock
+                            Text="{Binding Views}"
+                            Opacity="0.7"/>
 
                     </StackPanel>
 
@@ -269,6 +282,7 @@
 
                 <StackPanel
                     x:Name="CommentsPanel"
+                    Margin="0,-12,0,0"
                     Spacing="16">
 
                     <TextBlock
@@ -339,7 +353,8 @@
 
                     <StackPanel
                         Orientation="Horizontal"
-                        Spacing="12">
+                        Spacing="12"
+                        Height="36">
 
                         <TextBlock
                             Text="Live chat"
@@ -347,12 +362,21 @@
                             FontWeight="SemiBold"/>
 
                         <Button
-                            Content="Refresh"
-                            Click="RefreshLiveChat_Click"/>
+                            Width="36"
+                            Height="36"
+                            Padding="0"
+                            VerticalAlignment="Center"
+                            ToolTipService.ToolTip="Refresh live chat"
+                            Click="RefreshLiveChat_Click">
+
+                            <SymbolIcon Symbol="Refresh"/>
+
+                        </Button>
 
                     </StackPanel>
 
                     <TextBlock
+                        x:Name="LiveChatStatusTextBlock"
                         Text="{x:Bind LiveChatStatus}"
                         TextWrapping="Wrap"
                         Opacity="0.75"/>
@@ -404,6 +428,8 @@
             <StackPanel
                 x:Name="UpNextPanel"
                 Grid.Column="1"
+                Width="340"
+                HorizontalAlignment="Stretch"
                 Spacing="16">
 
                 <StackPanel
@@ -411,9 +437,17 @@
                     Spacing="16"
                     Visibility="Collapsed">
 
-                    <StackPanel
-                        Orientation="Horizontal"
-                        Spacing="12">
+                    <Grid
+                        x:Name="LiveChatHeaderGrid"
+                        Width="340"
+                        HorizontalAlignment="Stretch"
+                        ColumnSpacing="12">
+
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
 
                         <TextBlock
                             Text="Live chat"
@@ -421,24 +455,44 @@
                             FontWeight="SemiBold"/>
 
                         <Button
-                            Content="Refresh"
-                            Click="RefreshLiveChat_Click"/>
+                            Grid.Column="2"
+                            Width="36"
+                            Height="36"
+                            Padding="0"
+                            HorizontalAlignment="Right"
+                            VerticalAlignment="Center"
+                            ToolTipService.ToolTip="Refresh live chat"
+                            Click="RefreshLiveChat_Click">
 
-                    </StackPanel>
+                            <SymbolIcon Symbol="Refresh"/>
+
+                        </Button>
+
+                    </Grid>
 
                     <TextBlock
+                        x:Name="SidebarLiveChatStatusTextBlock"
                         Text="{x:Bind LiveChatStatus}"
                         TextWrapping="Wrap"
                         Opacity="0.75"/>
 
-                    <WebView2
-                        x:Name="LiveChatWebView"
-                        Height="360"
-                        Visibility="Collapsed"/>
+                    <Border
+                        x:Name="LiveChatWebViewFrame"
+                        Height="{Binding ActualHeight, ElementName=PlayerBorder}"
+                        Margin="0,8,0,0"
+                        CornerRadius="12"
+                        Background="#111111"
+                        Visibility="Collapsed">
+
+                        <WebView2
+                            x:Name="LiveChatWebView"/>
+
+                    </Border>
 
                     <ScrollViewer
                         x:Name="LiveChatMessagesScrollViewer"
-                        MaxHeight="360">
+                        Margin="0,8,0,0"
+                        MaxHeight="{Binding ActualHeight, ElementName=PlayerBorder}">
 
                         <ItemsControl
                             ItemsSource="{x:Bind LiveChatMessages}">
@@ -482,10 +536,49 @@
 
                 </StackPanel>
 
-                <TextBlock
-                    Text="Up next"
-                    FontSize="24"
-                    FontWeight="SemiBold"/>
+                <Grid
+                    x:Name="UpNextHeaderGrid"
+                    Width="340"
+                    ColumnSpacing="12"
+                    HorizontalAlignment="Stretch"
+                    Margin="0,4,0,0">
+
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+
+                    <TextBlock
+                        Text="Up next"
+                        FontSize="24"
+                        FontWeight="SemiBold"/>
+
+                    <Grid
+                        Grid.Column="1"
+                        HorizontalAlignment="Right"
+                        VerticalAlignment="Center">
+
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+
+                        <TextBlock
+                            Text="Autoplay"
+                            Margin="0,0,8,0"
+                            VerticalAlignment="Center"
+                            Opacity="0.8"/>
+
+                        <ToggleSwitch
+                            x:Name="AutoPlayUpNextSwitch"
+                            Grid.Column="1"
+                            HorizontalAlignment="Right"
+                            OffContent="Off"
+                            OnContent="On"/>
+
+                    </Grid>
+
+                </Grid>
 
                 <ItemsControl
                     ItemsSource="{x:Bind RecommendedVideos}">
@@ -523,7 +616,8 @@
 
                                     <StackPanel
                                         Grid.Column="1"
-                                        VerticalAlignment="Center">
+                                        VerticalAlignment="Center"
+                                        Spacing="4">
 
                                         <TextBlock
                                             Text="{x:Bind Title}"
@@ -531,18 +625,28 @@
                                             TextWrapping="WrapWholeWords"
                                             MaxLines="2"/>
 
-                                        <TextBlock
-                                            Margin="0,6,0,0"
-                                            Text="{x:Bind Channel}"
-                                            Opacity="0.7"/>
+                                        <Grid ColumnSpacing="8">
+
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="Auto"/>
+                                            </Grid.ColumnDefinitions>
+
+                                            <TextBlock
+                                                Text="{x:Bind Channel}"
+                                                Opacity="0.7"
+                                                TextTrimming="CharacterEllipsis"/>
+
+                                            <TextBlock
+                                                Grid.Column="1"
+                                                Text="{x:Bind Duration}"
+                                                Opacity="0.7"
+                                                FontSize="12"/>
+
+                                        </Grid>
 
                                         <TextBlock
                                             Text="{x:Bind Views}"
-                                            Opacity="0.6"
-                                            FontSize="12"/>
-
-                                        <TextBlock
-                                            Text="{x:Bind Duration}"
                                             Opacity="0.6"
                                             FontSize="12"/>
 

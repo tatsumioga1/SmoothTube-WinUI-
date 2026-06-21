@@ -194,6 +194,12 @@
 
             </ItemsControl>
 
+            <Button
+                Content="Load more"
+                HorizontalAlignment="Center"
+                Visibility="{x:Bind LoadMoreVisibility}"
+                Click="LoadMoreButton_Click"/>
+
         </StackPanel>
 
     </ScrollViewer>

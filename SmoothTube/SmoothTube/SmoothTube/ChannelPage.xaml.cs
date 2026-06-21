@@ -18,6 +18,8 @@ namespace SmoothTube
 
         public ObservableCollection<VideoItem> UploadVideos { get; } = [];
 
+        public ObservableCollection<VideoItem> ShortVideos { get; } = [];
+
         public ObservableCollection<VideoItem> LivestreamVideos { get; } = [];
 
         private List<VideoItem> allVideos = [];
@@ -64,6 +66,8 @@ namespace SmoothTube
                     UpdateBannerVisibility();
                 }
 
+                await UpdateSubscriptionButtonAsync();
+
                 List<VideoItem> videos =
                     await ServiceLocator.YouTube.GetChannelVideosAsync(
                         Channel.Id,
@@ -81,7 +85,7 @@ namespace SmoothTube
             StatusText =
                 allVideos.Count == 0
                     ? "No recent uploads loaded for this channel."
-                    : $"{UploadVideos.Count} uploads, {LivestreamVideos.Count} livestreams";
+                    : $"{UploadVideos.Count} uploads, {ShortVideos.Count} shorts, {LivestreamVideos.Count} livestreams";
 
             Bindings.Update();
         }
@@ -122,17 +126,41 @@ namespace SmoothTube
                     .ToList();
 
             UploadVideos.Clear();
+            ShortVideos.Clear();
             LivestreamVideos.Clear();
 
-            foreach (VideoItem video in allVideos.Where(video => !video.IsLive))
+            foreach (VideoItem video in allVideos.Where(video =>
+                !video.IsLive &&
+                !IsLikelyShort(video)))
             {
                 UploadVideos.Add(video);
+            }
+
+            foreach (VideoItem video in allVideos.Where(video =>
+                !video.IsLive &&
+                IsLikelyShort(video)))
+            {
+                ShortVideos.Add(video);
             }
 
             foreach (VideoItem video in allVideos.Where(video => video.IsLive))
             {
                 LivestreamVideos.Add(video);
             }
+        }
+
+        private static bool IsLikelyShort(VideoItem video)
+        {
+            if (video.IsShort)
+                return true;
+
+            string title = video.Title ?? "";
+
+            return
+                title.Contains("#short", StringComparison.OrdinalIgnoreCase) ||
+                title.Contains(" shorts", StringComparison.OrdinalIgnoreCase) ||
+                title.Contains(" short ", StringComparison.OrdinalIgnoreCase) ||
+                title.EndsWith(" short", StringComparison.OrdinalIgnoreCase);
         }
 
         private void UpdateBannerVisibility()
@@ -178,6 +206,38 @@ namespace SmoothTube
             {
                 Frame.GoBack();
             }
+        }
+
+        private async void SubscribeButton_Click(
+            object sender,
+            RoutedEventArgs e)
+        {
+            SubscribeButton.IsEnabled = false;
+            SubscribeButton.Content = "Subscribing...";
+
+            bool success =
+                await ServiceLocator.YouTube.SubscribeToChannelAsync(Channel.Id);
+
+            SubscribeButton.Content =
+                success
+                    ? "Subscribed"
+                    : "Sign in to subscribe";
+
+            SubscribeButton.IsEnabled = !success;
+        }
+
+        private async System.Threading.Tasks.Task UpdateSubscriptionButtonAsync()
+        {
+            bool isSubscribed =
+                await ServiceLocator.YouTube.IsSubscribedToChannelAsync(
+                    Channel.Id);
+
+            SubscribeButton.Content =
+                isSubscribed
+                    ? "Subscribed"
+                    : "Subscribe";
+
+            SubscribeButton.IsEnabled = !isSubscribed;
         }
 
         private void VideoCard_Tapped(

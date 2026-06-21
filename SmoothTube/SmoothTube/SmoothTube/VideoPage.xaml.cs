@@ -68,6 +68,8 @@ namespace SmoothTube
                 DataContext = CurrentVideo;
                 ApplyLiveChatLayout();
                 UpdateChannelButtonVisibility();
+                _ = UpdateSubscriptionButtonAsync();
+                _ = UpdateRatingStateAsync();
                 WatchHistoryService.RecordStarted(CurrentVideo);
                 _ = EnrichCurrentVideoAsync();
                 _ = UpdatePlayerSourceAsync();
@@ -81,6 +83,8 @@ namespace SmoothTube
                 DataContext = CurrentVideo;
                 ApplyLiveChatLayout();
                 UpdateChannelButtonVisibility();
+                _ = UpdateSubscriptionButtonAsync();
+                _ = UpdateRatingStateAsync();
                 WatchHistoryService.RecordStarted(CurrentVideo);
                 _ = EnrichCurrentVideoAsync();
                 _ = UpdatePlayerSourceAsync();
@@ -95,15 +99,7 @@ namespace SmoothTube
             if (sender is Border border &&
                 border.DataContext is VideoItem video)
             {
-                StopPlayback();
-
-                Frame.Navigate(
-                    typeof(VideoPage),
-                    new VideoNavigationData
-                    {
-                        CurrentVideo = video,
-                        AllVideos = AllVideos
-                    });
+                NavigateToVideo(video);
             }
         }
 
@@ -225,6 +221,15 @@ namespace SmoothTube
                 Grid.SetColumn(UpNextPanel, 0);
                 Grid.SetRow(UpNextPanel, 1);
 
+                UpNextPanel.Width =
+                    double.NaN;
+
+                UpNextHeaderGrid.Width =
+                    double.NaN;
+
+                LiveChatHeaderGrid.Width =
+                    double.NaN;
+
                 UpNextPanel.Margin =
                     new Thickness(0, 24, 0, 0);
 
@@ -241,6 +246,15 @@ namespace SmoothTube
 
                 SidebarColumn.Width =
                     new GridLength(340);
+
+                UpNextPanel.Width =
+                    SidebarColumn.Width.Value;
+
+                UpNextHeaderGrid.Width =
+                    SidebarColumn.Width.Value;
+
+                LiveChatHeaderGrid.Width =
+                    SidebarColumn.Width.Value;
             }
 
             UpdatePlayerSize();
@@ -258,6 +272,8 @@ namespace SmoothTube
                 CurrentVideo.IsLive
                     ? Visibility.Visible
                     : Visibility.Collapsed;
+
+            UpdateLiveChatStatusVisibility();
         }
 
         private void UpdatePlayerSize()
@@ -396,7 +412,24 @@ namespace SmoothTube
             PlayerWebView.CoreWebView2.NavigationStarting +=
                 CoreWebView2_NavigationStarting;
 
+            PlayerWebView.CoreWebView2.WebMessageReceived +=
+                CoreWebView2_WebMessageReceived;
+
             playerEventsAttached = true;
+        }
+
+        private void CoreWebView2_WebMessageReceived(
+            CoreWebView2 sender,
+            CoreWebView2WebMessageReceivedEventArgs args)
+        {
+            string message = args.TryGetWebMessageAsString();
+
+            if (message == "ended" &&
+                AutoPlayUpNextSwitch.IsOn &&
+                RecommendedVideos.Count > 0)
+            {
+                NavigateToVideo(RecommendedVideos[0]);
+            }
         }
 
         private void CoreWebView2_NewWindowRequested(
@@ -449,15 +482,7 @@ namespace SmoothTube
                         IsEmbeddable = true
                     };
 
-                Frame.Navigate(
-                    typeof(VideoPage),
-                    new VideoNavigationData
-                    {
-                        CurrentVideo = nextVideo,
-                        AllVideos = AllVideos.Count > 0
-                            ? AllVideos
-                            : [nextVideo]
-                    });
+                NavigateToVideo(nextVideo);
 
                 return true;
             }
@@ -664,11 +689,7 @@ namespace SmoothTube
 
             if (success)
             {
-                LikeButton.Background =
-                    new SolidColorBrush(ColorHelper.FromArgb(255, 210, 140, 230));
-                DislikeButton.Background = null;
-                LikeButton.Opacity = 1;
-                DislikeButton.Opacity = 0.6;
+                ApplyRatingState("like");
             }
         }
 
@@ -687,12 +708,103 @@ namespace SmoothTube
 
             if (success)
             {
-                DislikeButton.Background =
-                    new SolidColorBrush(ColorHelper.FromArgb(255, 210, 140, 230));
-                LikeButton.Background = null;
-                DislikeButton.Opacity = 1;
-                LikeButton.Opacity = 0.6;
+                ApplyRatingState("dislike");
             }
+        }
+
+        private async Task UpdateRatingStateAsync()
+        {
+            if (LikeButton == null ||
+                DislikeButton == null ||
+                string.IsNullOrWhiteSpace(CurrentVideo.Id))
+            {
+                return;
+            }
+
+            string rating =
+                await ServiceLocator.YouTube.GetVideoRatingAsync(
+                    CurrentVideo.Id);
+
+            ApplyRatingState(rating);
+        }
+
+        private void ApplyRatingState(string rating)
+        {
+            Brush accentBrush =
+                Application.Current.Resources.TryGetValue(
+                    "AccentButtonBackground",
+                    out object accentResource) &&
+                accentResource is Brush brush
+                    ? brush
+                    : new SolidColorBrush(
+                        ColorHelper.FromArgb(255, 210, 140, 230));
+
+            LikeButton.Background =
+                rating == "like"
+                    ? accentBrush
+                    : null;
+
+            DislikeButton.Background =
+                rating == "dislike"
+                    ? accentBrush
+                    : null;
+
+            LikeButton.Opacity =
+                rating == "dislike"
+                    ? 0.65
+                    : 1;
+
+            DislikeButton.Opacity =
+                rating == "like"
+                    ? 0.65
+                    : 1;
+        }
+
+        private async void SubscribeButton_Click(
+            object sender,
+            RoutedEventArgs e)
+        {
+            SubscribeButton.IsEnabled = false;
+            SubscribeButton.Content = "Subscribing...";
+
+            if (string.IsNullOrWhiteSpace(CurrentVideo.ChannelId) &&
+                !await TryResolveCurrentChannelAsync())
+            {
+                SubscribeButton.Content = "Channel unavailable";
+                SubscribeButton.IsEnabled = true;
+                return;
+            }
+
+            bool success =
+                await ServiceLocator.YouTube.SubscribeToChannelAsync(
+                    CurrentVideo.ChannelId);
+
+            SubscribeButton.Content =
+                success
+                    ? "Subscribed"
+                    : "Sign in to subscribe";
+
+            SubscribeButton.IsEnabled = !success;
+        }
+
+        private async Task UpdateSubscriptionButtonAsync()
+        {
+            if (SubscribeButton == null ||
+                string.IsNullOrWhiteSpace(CurrentVideo.ChannelId))
+            {
+                return;
+            }
+
+            bool isSubscribed =
+                await ServiceLocator.YouTube.IsSubscribedToChannelAsync(
+                    CurrentVideo.ChannelId);
+
+            SubscribeButton.Content =
+                isSubscribed
+                    ? "Subscribed"
+                    : "Subscribe";
+
+            SubscribeButton.IsEnabled = !isSubscribed;
         }
 
         private void VideoThumbnail_Loaded(
@@ -742,6 +854,7 @@ namespace SmoothTube
             DataContext = CurrentVideo;
             ApplyLiveChatLayout();
             UpdateChannelButtonVisibility();
+            _ = UpdateSubscriptionButtonAsync();
             Bindings.Update();
 
             if (CurrentVideo.IsLive)
@@ -756,8 +869,24 @@ namespace SmoothTube
                 video.Title == "YouTube video" ||
                 video.Title == "Loading..." ||
                 string.IsNullOrWhiteSpace(video.Channel) ||
+                string.IsNullOrWhiteSpace(video.Description) ||
                 string.IsNullOrWhiteSpace(video.Duration) ||
                 video.IsLive && string.IsNullOrWhiteSpace(video.LiveChatId);
+        }
+
+        private void NavigateToVideo(VideoItem video)
+        {
+            StopPlayback();
+
+            Frame.Navigate(
+                typeof(VideoPage),
+                new VideoNavigationData
+                {
+                    CurrentVideo = video,
+                    AllVideos = AllVideos.Count > 0
+                        ? AllVideos
+                        : [video]
+                });
         }
 
         private async Task<bool> TryResolveCurrentChannelAsync()
@@ -853,6 +982,7 @@ namespace SmoothTube
                     : "This video is not an active livestream.";
 
             Bindings.Update();
+            UpdateLiveChatStatusVisibility();
 
             await LoadCommentsAsync();
             await LoadLiveChatAsync();
@@ -886,6 +1016,7 @@ namespace SmoothTube
                 HideLiveChatEmbed();
                 LiveChatStatus = "This video is not an active livestream.";
                 Bindings.Update();
+                UpdateLiveChatStatusVisibility();
                 return;
             }
 
@@ -893,6 +1024,7 @@ namespace SmoothTube
             {
                 LiveChatStatus = "Loading YouTube live chat...";
                 Bindings.Update();
+                UpdateLiveChatStatusVisibility();
                 await ShowLiveChatEmbedAsync();
                 return;
             }
@@ -908,6 +1040,7 @@ namespace SmoothTube
                     : $"{LiveChatMessages.Count} live chat messages";
 
             Bindings.Update();
+            UpdateLiveChatStatusVisibility();
         }
 
         private async Task ShowLiveChatEmbedAsync()
@@ -923,7 +1056,7 @@ namespace SmoothTube
             try
             {
                 LiveChatMessagesScrollViewer.Visibility = Visibility.Collapsed;
-                LiveChatWebView.Visibility = Visibility.Visible;
+                LiveChatWebViewFrame.Visibility = Visibility.Visible;
 
                 await LiveChatWebView.EnsureCoreWebView2Async();
 
@@ -932,6 +1065,10 @@ namespace SmoothTube
 
                 LiveChatWebView.CoreWebView2.Navigate(
                     $"https://www.youtube.com/live_chat?v={videoId}&embed_domain=smoothtube.local");
+
+                LiveChatStatus = "";
+                Bindings.Update();
+                UpdateLiveChatStatusVisibility();
             }
             catch (Exception ex) when (ex is InvalidOperationException ||
                 ex is COMException)
@@ -939,6 +1076,7 @@ namespace SmoothTube
                 HideLiveChatEmbed();
                 LiveChatStatus = "Live chat could not be opened for this stream.";
                 Bindings.Update();
+                UpdateLiveChatStatusVisibility();
             }
         }
 
@@ -946,12 +1084,29 @@ namespace SmoothTube
         {
             if (LiveChatWebView != null)
             {
-                LiveChatWebView.Visibility = Visibility.Collapsed;
+                LiveChatWebViewFrame.Visibility = Visibility.Collapsed;
             }
 
             if (LiveChatMessagesScrollViewer != null)
             {
                 LiveChatMessagesScrollViewer.Visibility = Visibility.Visible;
+            }
+        }
+
+        private void UpdateLiveChatStatusVisibility()
+        {
+            if (LiveChatStatusTextBlock == null)
+                return;
+
+            LiveChatStatusTextBlock.Visibility =
+                string.IsNullOrWhiteSpace(LiveChatStatus)
+                    ? Visibility.Collapsed
+                    : Visibility.Visible;
+
+            if (SidebarLiveChatStatusTextBlock != null)
+            {
+                SidebarLiveChatStatusTextBlock.Visibility =
+                    LiveChatStatusTextBlock.Visibility;
             }
         }
     }

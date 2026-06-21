@@ -49,6 +49,7 @@ namespace SmoothTube
             RootGrid.Loaded += MainWindow_Loaded;
             ContentFrame.Navigated += ContentFrame_Navigated;
             LoadCachedSubscriptionShortcuts();
+            AppNavigation.SelectedItem = HomeNavItem;
             ContentFrame.Navigate(typeof(HomePage));
         }
 

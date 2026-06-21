@@ -9,6 +9,10 @@ namespace SmoothTube.Services
     {
         Task<List<VideoItem>> GetHomeVideosAsync(CancellationToken cancellationToken = default);
 
+        Task<List<VideoItem>> GetMoreHomeVideosAsync(
+            IEnumerable<string> existingVideoIds,
+            CancellationToken cancellationToken = default);
+
         Task<List<VideoItem>> GetContinueWatchingAsync(CancellationToken cancellationToken = default);
 
         Task<List<VideoItem>> GetVideosByCategoryAsync(
@@ -26,6 +30,18 @@ namespace SmoothTube.Services
         Task<bool> RateVideoAsync(
             string videoId,
             string rating,
+            CancellationToken cancellationToken = default);
+
+        Task<string> GetVideoRatingAsync(
+            string videoId,
+            CancellationToken cancellationToken = default);
+
+        Task<bool> SubscribeToChannelAsync(
+            string channelId,
+            CancellationToken cancellationToken = default);
+
+        Task<bool> IsSubscribedToChannelAsync(
+            string channelId,
             CancellationToken cancellationToken = default);
 
         Task<List<SearchResultItem>> SearchAllAsync(

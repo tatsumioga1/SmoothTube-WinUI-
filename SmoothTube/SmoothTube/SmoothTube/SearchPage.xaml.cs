@@ -73,6 +73,19 @@ namespace SmoothTube
                 if (cancellationToken.IsCancellationRequested)
                     return;
 
+                if (results.Count == 0)
+                {
+                    await Task.Delay(700, cancellationToken);
+
+                    results =
+                        await ServiceLocator.YouTube.SearchAllAsync(
+                            query,
+                            cancellationToken);
+
+                    if (cancellationToken.IsCancellationRequested)
+                        return;
+                }
+
                 Results.Clear();
 
                 foreach (SearchResultItem result in results)

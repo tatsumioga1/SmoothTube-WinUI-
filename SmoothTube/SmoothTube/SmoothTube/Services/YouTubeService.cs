@@ -48,12 +48,48 @@ namespace SmoothTube.Services
                 await GetInvidiousHomeVideosAsync(cancellationToken);
 
             if (invidiousVideos.Count > 0)
+            {
+                await TryEnrichVideosFromWatchPagesAsync(
+                    invidiousVideos,
+                    cancellationToken);
+
                 return invidiousVideos;
+            }
 
             if (!HasApiKey)
                 return VideoCatalog.GetAll();
 
-            return await SearchYouTubeAsync("popular videos", cancellationToken);
+            List<VideoItem> videos =
+                await SearchYouTubeAsync("popular videos", cancellationToken);
+
+            await TryEnrichVideosFromWatchPagesAsync(videos, cancellationToken);
+            return videos;
+        }
+
+        public async Task<List<VideoItem>> GetMoreHomeVideosAsync(
+            IEnumerable<string> existingVideoIds,
+            CancellationToken cancellationToken = default)
+        {
+            HashSet<string> existingIds =
+                existingVideoIds
+                    .Where(id => !string.IsNullOrWhiteSpace(id))
+                    .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+            List<VideoItem> videos =
+                await GetInvidiousHomeVideosAsync(
+                    cancellationToken,
+                    includeAdditionalFeeds: true);
+
+            videos =
+                videos
+                    .Where(video => !existingIds.Contains(video.Id))
+                    .GroupBy(video => video.Id)
+                    .Select(group => group.First())
+                    .Take(24)
+                    .ToList();
+
+            await TryEnrichVideosFromWatchPagesAsync(videos, cancellationToken);
+            return videos;
         }
 
         public Task<List<VideoItem>> GetContinueWatchingAsync(
@@ -222,6 +258,73 @@ namespace SmoothTube.Services
                 await HttpClient.SendAsync(request, cancellationToken);
 
             return response.IsSuccessStatusCode;
+        }
+
+        public async Task<string> GetVideoRatingAsync(
+            string videoId,
+            CancellationToken cancellationToken = default)
+        {
+            if (string.IsNullOrWhiteSpace(videoId))
+                return "";
+
+            string accessToken =
+                await ServiceLocator.GoogleOAuth.GetAccessTokenAsync();
+
+            if (string.IsNullOrWhiteSpace(accessToken))
+                return "";
+
+            string requestUri =
+                "https://www.googleapis.com/youtube/v3/videos/getRating" +
+                $"?id={Uri.EscapeDataString(videoId)}";
+
+            try
+            {
+                using HttpResponseMessage response =
+                    await SendAuthorizedGetAsync(
+                        requestUri,
+                        accessToken,
+                        cancellationToken);
+
+                if (!response.IsSuccessStatusCode)
+                    return "";
+
+                await using var contentStream =
+                    await response.Content.ReadAsStreamAsync(cancellationToken);
+
+                using JsonDocument document =
+                    await JsonDocument.ParseAsync(
+                        contentStream,
+                        cancellationToken: cancellationToken);
+
+                if (!document.RootElement.TryGetProperty(
+                        "items",
+                        out JsonElement items) ||
+                    items.ValueKind != JsonValueKind.Array)
+                {
+                    return "";
+                }
+
+                JsonElement firstItem =
+                    items.EnumerateArray().FirstOrDefault();
+
+                return firstItem.TryGetProperty(
+                        "rating",
+                        out JsonElement userRating)
+                    ? userRating.GetString() ?? ""
+                    : "";
+            }
+            catch (HttpRequestException)
+            {
+                return "";
+            }
+            catch (JsonException)
+            {
+                return "";
+            }
+            catch (TaskCanceledException)
+            {
+                return "";
+            }
         }
 
         public async Task<List<CommentItem>> GetCommentsAsync(
@@ -417,6 +520,90 @@ namespace SmoothTube.Services
             }
         }
 
+        public async Task<bool> SubscribeToChannelAsync(
+            string channelId,
+            CancellationToken cancellationToken = default)
+        {
+            if (string.IsNullOrWhiteSpace(channelId))
+                return false;
+
+            string accessToken =
+                await ServiceLocator.GoogleOAuth.GetAccessTokenAsync();
+
+            if (string.IsNullOrWhiteSpace(accessToken))
+                return false;
+
+            string requestUri =
+                "https://www.googleapis.com/youtube/v3/subscriptions?part=snippet";
+
+            var payload = new
+            {
+                snippet = new
+                {
+                    resourceId = new
+                    {
+                        kind = "youtube#channel",
+                        channelId
+                    }
+                }
+            };
+
+            using StringContent content =
+                new(
+                    JsonSerializer.Serialize(payload),
+                    System.Text.Encoding.UTF8,
+                    "application/json");
+
+            using HttpRequestMessage request =
+                new(HttpMethod.Post, requestUri);
+
+            request.Headers.Authorization =
+                new System.Net.Http.Headers.AuthenticationHeaderValue(
+                    "Bearer",
+                    accessToken);
+
+            request.Content = content;
+
+            try
+            {
+                using HttpResponseMessage response =
+                    await HttpClient.SendAsync(request, cancellationToken);
+
+                if (response.IsSuccessStatusCode)
+                {
+                    cachedSubscriptions = null;
+                    return true;
+                }
+
+                return response.StatusCode == HttpStatusCode.Conflict;
+            }
+            catch (HttpRequestException)
+            {
+                return false;
+            }
+            catch (TaskCanceledException)
+            {
+                return false;
+            }
+        }
+
+        public async Task<bool> IsSubscribedToChannelAsync(
+            string channelId,
+            CancellationToken cancellationToken = default)
+        {
+            if (string.IsNullOrWhiteSpace(channelId))
+                return false;
+
+            List<ChannelItem> subscriptions =
+                await GetSubscriptionsAsync(cancellationToken);
+
+            return subscriptions.Any(channel =>
+                string.Equals(
+                    channel.Id,
+                    channelId,
+                    StringComparison.OrdinalIgnoreCase));
+        }
+
         private static async Task TryEnrichVideosFromWatchPagesAsync(
             IEnumerable<VideoItem> videos,
             CancellationToken cancellationToken)
@@ -426,6 +613,7 @@ namespace SmoothTube.Services
                     .Where(video => !string.IsNullOrWhiteSpace(video.Id))
                     .Where(video =>
                         string.IsNullOrWhiteSpace(video.Duration) ||
+                        !video.IsShort ||
                         (!video.IsLive && !video.IsPremiere && LooksLikeBroadcast(video)))
                     .Take(120)
                     .ToList();
@@ -539,6 +727,19 @@ namespace SmoothTube.Services
                     video.IsPremiere = true;
                     video.IsLive = false;
                     video.PublishedAtSort ??= DateTimeOffset.Now;
+                }
+
+                if (body.Contains(
+                        $"/shorts/{video.Id}",
+                        StringComparison.OrdinalIgnoreCase) ||
+                    body.Contains(
+                        @"""isShortsEligible"":true",
+                        StringComparison.OrdinalIgnoreCase) ||
+                    body.Contains(
+                        @"""shortsLockupViewModel""",
+                        StringComparison.OrdinalIgnoreCase))
+                {
+                    video.IsShort = true;
                 }
 
                 if (string.IsNullOrWhiteSpace(video.Thumbnail))
@@ -1166,6 +1367,9 @@ namespace SmoothTube.Services
                     !string.IsNullOrWhiteSpace(nextPageToken));
 
                 await TryEnrichVideosAsync(videos, cancellationToken);
+                await TryEnrichVideosFromWatchPagesAsync(
+                    videos.Take(120),
+                    cancellationToken);
 
                 List<VideoItem> filteredVideos = videos
                     .Where(video => video.IsEmbeddable)
@@ -1642,7 +1846,8 @@ namespace SmoothTube.Services
         }
 
         private static async Task<List<VideoItem>> GetInvidiousHomeVideosAsync(
-            CancellationToken cancellationToken)
+            CancellationToken cancellationToken,
+            bool includeAdditionalFeeds = false)
         {
             string[] instances =
             [
@@ -1651,25 +1856,43 @@ namespace SmoothTube.Services
                 "https://invidious.nerdvpn.de"
             ];
 
+            string[] paths =
+                includeAdditionalFeeds
+                    ? [
+                        "/api/v1/popular",
+                        "/api/v1/trending?type=default&region=US",
+                        "/api/v1/trending?type=music&region=US",
+                        "/api/v1/trending?type=gaming&region=US",
+                        "/api/v1/trending?type=movies&region=US"
+                    ]
+                    : [
+                        "/api/v1/popular",
+                        "/api/v1/trending?type=default&region=US"
+                    ];
+
             foreach (string instance in instances)
             {
-                List<VideoItem> videos =
-                    await TryGetInvidiousVideosAsync(
-                        instance,
-                        "/api/v1/popular",
-                        cancellationToken);
+                List<VideoItem> videos = [];
 
-                if (videos.Count == 0)
+                foreach (string path in paths)
                 {
-                    videos =
+                    videos.AddRange(
                         await TryGetInvidiousVideosAsync(
                             instance,
-                            "/api/v1/trending?type=default&region=US",
-                            cancellationToken);
+                            path,
+                            cancellationToken));
                 }
 
+                videos =
+                    videos
+                        .Where(video => !string.IsNullOrWhiteSpace(video.Id))
+                        .GroupBy(video => video.Id)
+                        .Select(group => group.First())
+                        .Take(includeAdditionalFeeds ? 80 : 24)
+                        .ToList();
+
                 if (videos.Count > 0)
-                    return videos.Take(24).ToList();
+                    return videos;
             }
 
             return [];
