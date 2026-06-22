@@ -182,6 +182,12 @@ namespace SmoothTube
                             .OrderByDescending(GetPublishedAtSort)
                             .ToList();
 
+                    List<VideoItem> broadcastVideos =
+                        batch
+                            .Where(video => video.IsLive || video.IsPremiere)
+                            .OrderByDescending(GetPublishedAtSort)
+                            .ToList();
+
                     if (append)
                     {
                         uploadVideos =
@@ -197,6 +203,7 @@ namespace SmoothTube
                         loadedUploads.Count;
 
                     MergeVideos(loadedUploads, uploadVideos);
+                    MergeVideos(loadedBroadcasts, broadcastVideos);
 
                     addedCount +=
                         loadedUploads.Count - beforeMergeCount;
