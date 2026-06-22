@@ -683,16 +683,28 @@ namespace SmoothTube.Services
                     video.Duration = FormatDuration(totalSeconds);
                 }
 
-                bool isPremiere =
+                bool hasLengthSeconds =
+                    !string.IsNullOrWhiteSpace(lengthSeconds);
+
+                bool isUpcomingPremiere =
                     body.Contains(
-                        "upcomingEventData",
+                        @"""liveBroadcastContent"":""upcoming""",
                         StringComparison.OrdinalIgnoreCase) ||
                     body.Contains(
                         @"""isUpcoming"":true",
-                        StringComparison.OrdinalIgnoreCase) ||
-                    body.Contains(
-                        @"""liveBroadcastContent"":""upcoming""",
                         StringComparison.OrdinalIgnoreCase);
+
+                // Be careful with upcomingEventData:
+                // Some past premieres/lives can still leave event metadata behind.
+                // Only use it when the video does not look like a finished playback.
+                bool hasUpcomingEventData =
+                    body.Contains(
+                        "upcomingEventData",
+                        StringComparison.OrdinalIgnoreCase);
+
+                bool isPremiere =
+                    isUpcomingPremiere ||
+                    (!hasLengthSeconds && hasUpcomingEventData);
 
                 bool isLive =
                     !isPremiere &&
@@ -700,20 +712,14 @@ namespace SmoothTube.Services
                             @"""isLiveNow"":true",
                             StringComparison.OrdinalIgnoreCase) ||
                         body.Contains(
-                            @"""isLive"":true",
-                            StringComparison.OrdinalIgnoreCase) ||
-                        body.Contains(
-                            @"""isLiveContent"":true",
-                            StringComparison.OrdinalIgnoreCase) ||
-                        body.Contains(
                             @"""isLivePlayback"":true",
                             StringComparison.OrdinalIgnoreCase) ||
                         body.Contains(
                             @"""liveBroadcastContent"":""live""",
-                            StringComparison.OrdinalIgnoreCase) ||
-                        body.Contains(
-                            "liveBroadcastDetails",
                             StringComparison.OrdinalIgnoreCase));
+
+                // Do NOT treat liveBroadcastDetails alone as live.
+                // Past livestreams can still have liveBroadcastDetails.
 
                 if (isLive)
                 {
@@ -727,6 +733,12 @@ namespace SmoothTube.Services
                     video.IsPremiere = true;
                     video.IsLive = false;
                     video.PublishedAtSort ??= DateTimeOffset.Now;
+                }
+
+                else
+                {
+                    video.IsLive = false;
+                    video.IsPremiere = false;
                 }
 
                 if (body.Contains(
@@ -843,18 +855,34 @@ namespace SmoothTube.Services
                 string liveBroadcastContent =
                     details.Snippet?.LiveBroadcastContent ?? "";
 
-                video.IsLive =
-                    video.IsLive ||
-                    liveBroadcastContent == "live" ||
+                bool hasActiveLiveChat =
                     !string.IsNullOrWhiteSpace(details.LiveStreamingDetails?.ActiveLiveChatId);
 
-                video.IsPremiere =
-                    video.IsPremiere ||
-                    !video.IsLive &&
-                    liveBroadcastContent == "upcoming";
+                bool hasEnded =
+                    details.LiveStreamingDetails?.ActualEndTime != null;
+
+                bool isCurrentlyLive =
+                    !hasEnded &&
+                    (liveBroadcastContent.Equals("live", StringComparison.OrdinalIgnoreCase) ||
+                     hasActiveLiveChat);
+
+                bool isUpcoming =
+                    liveBroadcastContent.Equals("upcoming", StringComparison.OrdinalIgnoreCase);
+
+                // Important:
+                // IsLive means live right now.
+                // Past livestreams should not keep the LIVE badge.
+                video.IsLive = isCurrentlyLive;
+
+                // Important:
+                // IsPremiere means scheduled/upcoming.
+                // Past premieres should return to normal uploads.
+                video.IsPremiere = !isCurrentlyLive && isUpcoming;
 
                 video.LiveChatId =
-                    details.LiveStreamingDetails?.ActiveLiveChatId ?? "";
+                    isCurrentlyLive
+                        ? details.LiveStreamingDetails?.ActiveLiveChatId ?? ""
+                        : "";
 
                 video.IsEmbeddable =
                     details.Status?.Embeddable != false;
@@ -2830,6 +2858,12 @@ namespace SmoothTube.Services
         private sealed class YouTubeLiveStreamingDetails
         {
             public string? ActiveLiveChatId { get; set; }
+
+            public DateTimeOffset? ScheduledStartTime { get; set; }
+
+            public DateTimeOffset? ActualStartTime { get; set; }
+
+            public DateTimeOffset? ActualEndTime { get; set; }
         }
 
         private sealed class YouTubeCommentThreadsResponse
