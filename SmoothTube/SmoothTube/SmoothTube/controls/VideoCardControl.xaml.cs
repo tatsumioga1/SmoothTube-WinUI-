@@ -297,7 +297,7 @@ namespace SmoothTube.Controls
             object sender,
             PointerRoutedEventArgs e)
         {
-            AnimateThumbnail(1.025);
+            AnimateThumbnail(1);
         }
 
         private void AnimateThumbnail(double targetScale)

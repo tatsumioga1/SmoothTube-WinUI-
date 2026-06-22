@@ -38,7 +38,7 @@
                         <WrapGrid
                             Orientation="Horizontal"
                             ItemWidth="240"
-                            ItemHeight="210"/>
+                            ItemHeight="240"/>
                     </ItemsPanelTemplate>
                 </ItemsControl.ItemsPanel>
 
@@ -52,7 +52,7 @@
 
                             <controls:VideoCardControl
                                 CardWidth="220"
-                                CardHeight="195"
+                                CardHeight="225"
                                 ThumbnailHeight="123.75"
                                 Title="{x:Bind Title}"
                                 Channel="{x:Bind Channel}"
