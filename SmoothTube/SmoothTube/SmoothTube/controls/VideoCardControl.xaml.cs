@@ -192,6 +192,19 @@ namespace SmoothTube.Controls
                 typeof(VideoCardControl),
                 new PropertyMetadata(168.75));
 
+        public Stretch ThumbnailStretch
+        {
+            get => (Stretch)GetValue(ThumbnailStretchProperty);
+            set => SetValue(ThumbnailStretchProperty, value);
+        }
+
+        public static readonly DependencyProperty ThumbnailStretchProperty =
+            DependencyProperty.Register(
+                nameof(ThumbnailStretch),
+                typeof(Stretch),
+                typeof(VideoCardControl),
+                new PropertyMetadata(Stretch.UniformToFill));
+
         private static void OnShowProgressChanged(
             DependencyObject d,
             DependencyPropertyChangedEventArgs e)

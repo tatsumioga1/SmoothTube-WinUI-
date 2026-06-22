@@ -118,18 +118,19 @@
                             Margin="0,0,20,20"
                             Tapped="VideoCard_Tapped">
 
-                            <controls:VideoCardControl
-                                CardWidth="240"
-                                CardHeight="235"
-                                ThumbnailHeight="135"
-                                Title="{x:Bind Title}"
-                                Channel="{x:Bind Channel}"
-                                Views="{x:Bind Views}"
-                                Duration="{x:Bind Duration}"
-                                IsLive="{x:Bind IsLive}"
-                                IsPremiere="{x:Bind IsPremiere}"
-                                Thumbnail="{x:Bind Thumbnail}"
-                                ShowProgress="False"/>
+                                    <controls:VideoCardControl
+                                        CardWidth="240"
+                                        CardHeight="235"
+                                        ThumbnailHeight="135"
+                                        ThumbnailStretch="Uniform"
+                                        Title="{x:Bind Title}"
+                                        Channel="{x:Bind Channel}"
+                                        Views="{x:Bind Views}"
+                                        Duration="{x:Bind Duration}"
+                                        IsLive="{x:Bind IsLive}"
+                                        IsPremiere="{x:Bind IsPremiere}"
+                                        Thumbnail="{x:Bind Thumbnail}"
+                                        ShowProgress="False"/>
 
                         </Border>
 

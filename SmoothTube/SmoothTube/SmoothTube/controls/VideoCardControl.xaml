@@ -32,7 +32,9 @@
 
                     <Image
                         x:Name="ThumbnailImage"
-                        Stretch="Uniform"
+                        Width="{Binding CardWidth, ElementName=Root}"
+                        Height="{Binding ThumbnailHeight, ElementName=Root}"
+                        Stretch="{Binding ThumbnailStretch, ElementName=Root}"
                         VerticalAlignment="Center"
                         HorizontalAlignment="Center"
                         RenderTransformOrigin="0.5,0.5">
