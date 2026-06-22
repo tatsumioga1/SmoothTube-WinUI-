@@ -434,12 +434,13 @@
 
                 <StackPanel
                     x:Name="LiveChatPanel"
-                    Spacing="16"
+                    Spacing="0"
                     Visibility="Collapsed">
 
                     <Grid
                         x:Name="LiveChatHeaderGrid"
                         Width="340"
+                        Height="{Binding ActualHeight, ElementName=VideoActionsPanel}"
                         HorizontalAlignment="Stretch"
                         ColumnSpacing="12">
 
@@ -476,15 +477,15 @@
                         TextWrapping="Wrap"
                         Opacity="0.75"/>
 
-                    <Border
-                        x:Name="LiveChatWebViewFrame"
-                        Height="{Binding ActualHeight, ElementName=PlayerBorder}"
-                        Margin="0,8,0,0"
-                        CornerRadius="12"
-                        Background="#111111"
-                        Visibility="Collapsed">
+                        <Border
+                            x:Name="LiveChatWebViewFrame"
+                            Height="{Binding ActualHeight, ElementName=PlayerBorder}"
+                            Margin="0,24,0,0"
+                            CornerRadius="12"
+                            Background="#111111"
+                            Visibility="Collapsed">
 
-                        <WebView2
+                            <WebView2
                             x:Name="LiveChatWebView"/>
 
                     </Border>
