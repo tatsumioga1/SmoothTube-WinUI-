@@ -536,51 +536,56 @@
 
                 </StackPanel>
 
-                <Grid
-                    x:Name="UpNextHeaderGrid"
-                    Width="340"
-                    ColumnSpacing="12"
-                    HorizontalAlignment="Stretch"
-                    Margin="0,4,0,0">
-
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="*"/>
-                        <ColumnDefinition Width="Auto"/>
-                    </Grid.ColumnDefinitions>
-
-                    <TextBlock
-                        Text="Up next"
-                        FontSize="24"
-                        FontWeight="SemiBold"/>
-
                     <Grid
-                        Grid.Column="1"
-                        HorizontalAlignment="Right"
-                        VerticalAlignment="Center">
+                        x:Name="UpNextHeaderGrid"
+                        Width="340"
+                        HorizontalAlignment="Stretch"
+                        Margin="0,4,0,0">
 
                         <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="*"/>
                             <ColumnDefinition Width="Auto"/>
                         </Grid.ColumnDefinitions>
 
                         <TextBlock
-                            Text="Autoplay"
-                            Margin="0,0,8,0"
-                            VerticalAlignment="Center"
-                            Opacity="0.8"/>
+                        Grid.Column="0"
+                        Text="Up next"
+                        FontSize="24"
+                        FontWeight="SemiBold"
+                        VerticalAlignment="Center"/>
 
-                        <ToggleSwitch
-                            x:Name="AutoPlayUpNextSwitch"
+                        <StackPanel
                             Grid.Column="1"
+                            Orientation="Horizontal"
                             HorizontalAlignment="Right"
-                            OffContent="Off"
-                            OnContent="On"/>
+                            VerticalAlignment="Center"
+                            Spacing="8">
+
+                            <TextBlock
+                                Text="Autoplay"
+                                VerticalAlignment="Center"
+                                Opacity="0.8"
+                                FontSize="13" />
+
+                            <ToggleSwitch
+                                x:Name="AutoPlayUpNextSwitch"
+                                MinWidth="0"
+                                Width="48"
+                                HorizontalAlignment="Right"
+                                VerticalAlignment="Center"
+                                OffContent=""
+                                OnContent="" />
+
+                            <TextBlock
+                                Text="Off"
+                                VerticalAlignment="Center"
+                                Opacity="0.9"
+                                FontSize="13" />
+                        </StackPanel>
 
                     </Grid>
 
-                </Grid>
-
-                <ItemsControl
+                    <ItemsControl
                     ItemsSource="{x:Bind RecommendedVideos}">
 
                     <ItemsControl.ItemTemplate>
