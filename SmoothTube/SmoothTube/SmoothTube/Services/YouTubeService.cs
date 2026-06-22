@@ -1212,7 +1212,7 @@ namespace SmoothTube.Services
                 }
 
                 await TryEnrichVideosAsync(batchBroadcasts, cancellationToken);
-                await TryEnrichVideosFromWatchPagesAsync(batchBroadcasts, cancellationToken);
+                //await TryEnrichVideosFromWatchPagesAsync(batchBroadcasts, cancellationToken);
 
                 batchBroadcasts =
                     batchBroadcasts
@@ -1620,15 +1620,23 @@ namespace SmoothTube.Services
                     "upcoming",
                     cancellationToken));
 
-            if (broadcasts.Count == 0)
-            {
-                broadcasts.AddRange(
-                    await GetChannelLivePageBroadcastsAsync(
-                        channelId,
-                        cancellationToken));
-            }
+            // /live usually gives one featured/current stream.
+            broadcasts.AddRange(
+                await GetChannelLivePageBroadcastsAsync(
+                    channelId,
+                    cancellationToken));
 
-            return broadcasts;
+            // /streams can reveal multiple live/upcoming streams on the channel.
+            broadcasts.AddRange(
+                await GetChannelStreamsPageBroadcastsAsync(
+                    channelId,
+                    cancellationToken));
+
+            return broadcasts
+                .Where(video => !string.IsNullOrWhiteSpace(video.Id))
+                .GroupBy(video => video.Id)
+                .Select(group => group.First())
+                .ToList();
         }
 
         private static async Task<List<VideoItem>> GetChannelBroadcastsAsync(
@@ -1808,6 +1816,99 @@ namespace SmoothTube.Services
                         Category = "YouTube"
                     }
                 ];
+            }
+            catch (HttpRequestException)
+            {
+                return [];
+            }
+            catch (TaskCanceledException)
+            {
+                return [];
+            }
+            catch (RegexMatchTimeoutException)
+            {
+                return [];
+            }
+        }
+
+        private static async Task<List<VideoItem>> GetChannelStreamsPageBroadcastsAsync(
+            string channelId,
+            CancellationToken cancellationToken)
+        {
+            if (string.IsNullOrWhiteSpace(channelId))
+                return [];
+
+            try
+            {
+                using HttpResponseMessage response =
+                    await HttpClient.GetAsync(
+                        $"https://www.youtube.com/channel/{Uri.EscapeDataString(channelId)}/streams",
+                        cancellationToken);
+
+                if (!response.IsSuccessStatusCode)
+                    return [];
+
+                string html =
+                    await response.Content.ReadAsStringAsync(cancellationToken);
+
+                List<VideoItem> videos = [];
+
+                foreach (Match match in Regex.Matches(
+                    html,
+                    @"""videoRenderer"":\{(?<body>.*?""videoId"":""(?<id>[^""]+)""(?<rest>.*?))""thumbnailOverlays""",
+                    RegexOptions.Singleline,
+                    TimeSpan.FromMilliseconds(500)))
+                {
+                    string body =
+                        match.Groups["body"].Value +
+                        match.Groups["rest"].Value;
+
+                    string videoId =
+                        match.Groups["id"].Value;
+
+                    if (string.IsNullOrWhiteSpace(videoId))
+                        continue;
+
+                    bool isLive =
+                        body.Contains(@"""style"":""LIVE""", StringComparison.OrdinalIgnoreCase) ||
+                        body.Contains(@"""text"":""LIVE""", StringComparison.OrdinalIgnoreCase) ||
+                        body.Contains(@"""simpleText"":""LIVE""", StringComparison.OrdinalIgnoreCase) ||
+                        body.Contains("LIVE NOW", StringComparison.OrdinalIgnoreCase) ||
+                        body.Contains("watching", StringComparison.OrdinalIgnoreCase);
+
+                    bool isUpcoming =
+                        body.Contains("UPCOMING", StringComparison.OrdinalIgnoreCase) ||
+                        body.Contains("Premiere", StringComparison.OrdinalIgnoreCase) ||
+                        body.Contains("Waiting", StringComparison.OrdinalIgnoreCase) ||
+                        body.Contains("Scheduled", StringComparison.OrdinalIgnoreCase);
+
+                    if (!isLive && !isUpcoming)
+                        continue;
+
+                    videos.Add(
+                        new VideoItem
+                        {
+                            Id = videoId,
+                            Title = MatchJsonText(body, "title"),
+                            Channel = "",
+                            ChannelId = channelId,
+                            PublishedAt = isLive
+                                ? "Live now"
+                                : MatchJsonText(body, "publishedTimeText"),
+                            PublishedAtSort = DateTimeOffset.Now,
+                            Thumbnail = NormalizeVideoThumbnailUrl(
+                                MatchBestYouTubeImageUrl(body, "i.ytimg.com")),
+                            IsLive = isLive,
+                            IsPremiere = !isLive && isUpcoming,
+                            IsEmbeddable = true,
+                            Category = "YouTube"
+                        });
+                }
+
+                return videos
+                    .GroupBy(video => video.Id)
+                    .Select(group => group.First())
+                    .ToList();
             }
             catch (HttpRequestException)
             {
