@@ -10,13 +10,13 @@
 
   <Identity
     Name="7efece75-f174-4d37-aa1f-2cfdae858f29"
-    Publisher="CN=micro"
+    Publisher="CN=Danie S Joel"
     Version="1.0.0.0" />
 
   <mp:PhoneIdentity PhoneProductId="7efece75-f174-4d37-aa1f-2cfdae858f29" PhonePublisherId="00000000-0000-0000-0000-000000000000"/>
 
   <Properties>
-    <DisplayName>SmoothTube (Package)</DisplayName>
+    <DisplayName>SmoothTube</DisplayName>
     <PublisherDisplayName>micro</PublisherDisplayName>
     <Logo>Images\StoreLogo.png</Logo>
   </Properties>
@@ -35,7 +35,7 @@
       Executable="$targetnametoken$.exe"
       EntryPoint="$targetentrypoint$">
       <uap:VisualElements
-        DisplayName="SmoothTube (Package)"
+        DisplayName="SmoothTube"
         Description="SmoothTube (Package)"
         BackgroundColor="transparent"
         Square150x150Logo="Images\Square150x150Logo.png"
