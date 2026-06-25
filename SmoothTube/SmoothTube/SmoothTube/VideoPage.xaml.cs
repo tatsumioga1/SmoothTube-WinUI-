@@ -57,6 +57,7 @@ namespace SmoothTube
         private bool descriptionRichTextBuilt;
         private DispatcherTimer? progressTimer;
         private bool isStoppingPlayback;
+        private bool playerLoadedForLiveMode;
         private DateTimeOffset? playbackStartedAt;
         private double playbackStartedResumeSeconds;
 
@@ -64,11 +65,89 @@ namespace SmoothTube
         {
             InitializeComponent();
 
+            AddHandler(
+                UIElement.KeyDownEvent,
+                new KeyEventHandler(VideoPage_KeyDown),
+                true);
+
+            AddHandler(
+                UIElement.KeyUpEvent,
+                new KeyEventHandler(VideoPage_KeyUp),
+                true);
+
             PlayerWebView.NavigationCompleted += PlayerWebView_NavigationCompleted;
             Unloaded += VideoPage_Unloaded;
 
             Loaded += VideoPage_Loaded;
             SizeChanged += VideoPage_SizeChanged;
+        }
+
+        private async void VideoPage_KeyDown(
+            object sender,
+            KeyRoutedEventArgs e)
+        {
+            if (e.Key != Windows.System.VirtualKey.Space)
+            {
+                return;
+            }
+
+            if (IsTextInputFocused())
+            {
+                return;
+            }
+
+            // Mark Space as handled before focused buttons/cards can consume it.
+            // The matching KeyUp handler below prevents Button from firing Click.
+            e.Handled = true;
+            await TogglePlayerPlaybackAsync();
+        }
+
+        private void VideoPage_KeyUp(
+            object sender,
+            KeyRoutedEventArgs e)
+        {
+            if (e.Key != Windows.System.VirtualKey.Space)
+            {
+                return;
+            }
+
+            if (IsTextInputFocused())
+            {
+                return;
+            }
+
+            // Button controls usually activate on Space key-up.
+            // Handle this so Space never accidentally clicks Back/Like/Subscribe/etc.
+            e.Handled = true;
+        }
+
+        private static bool IsTextInputFocused()
+        {
+            object? focusedElement =
+                FocusManager.GetFocusedElement();
+
+            return focusedElement is TextBox ||
+                focusedElement is PasswordBox ||
+                focusedElement is RichEditBox ||
+                focusedElement is AutoSuggestBox;
+        }
+
+        private async Task TogglePlayerPlaybackAsync()
+        {
+            try
+            {
+                if (PlayerWebView?.CoreWebView2 == null)
+                {
+                    return;
+                }
+
+                await PlayerWebView.CoreWebView2.ExecuteScriptAsync(
+                    "window.__smoothTubeTogglePlayback && window.__smoothTubeTogglePlayback();");
+            }
+            catch (Exception)
+            {
+                // Ignore player toggle failures so keyboard handling never crashes the page.
+            }
         }
 
         protected override void OnNavigatedTo(
@@ -95,7 +174,24 @@ namespace SmoothTube
                 UpdateChannelButtonVisibility();
                 _ = UpdateSubscriptionButtonAsync();
                 _ = UpdateRatingStateAsync();
-                WatchHistoryService.ApplySavedProgress(CurrentVideo);
+                if (LooksLikeLiveVideo(CurrentVideo))
+                {
+                    CurrentVideo.IsLive = true;
+                    CurrentVideo.IsPremiere = false;
+                    CurrentVideo.ResumeSeconds = 0;
+                    CurrentVideo.Progress = 0;
+                    CurrentVideo.DurationSeconds = 0;
+
+                    if (string.IsNullOrWhiteSpace(CurrentVideo.Duration))
+                    {
+                        CurrentVideo.Duration = "LIVE";
+                    }
+                }
+                else
+                {
+                    WatchHistoryService.ApplySavedProgress(CurrentVideo);
+                }
+
                 WatchHistoryService.RecordStarted(CurrentVideo);
                 RefreshCurrentVideoBindings();
                 _ = EnrichCurrentVideoAsync();
@@ -116,7 +212,24 @@ namespace SmoothTube
                 UpdateChannelButtonVisibility();
                 _ = UpdateSubscriptionButtonAsync();
                 _ = UpdateRatingStateAsync();
-                WatchHistoryService.ApplySavedProgress(CurrentVideo);
+                if (LooksLikeLiveVideo(CurrentVideo))
+                {
+                    CurrentVideo.IsLive = true;
+                    CurrentVideo.IsPremiere = false;
+                    CurrentVideo.ResumeSeconds = 0;
+                    CurrentVideo.Progress = 0;
+                    CurrentVideo.DurationSeconds = 0;
+
+                    if (string.IsNullOrWhiteSpace(CurrentVideo.Duration))
+                    {
+                        CurrentVideo.Duration = "LIVE";
+                    }
+                }
+                else
+                {
+                    WatchHistoryService.ApplySavedProgress(CurrentVideo);
+                }
+
                 WatchHistoryService.RecordStarted(CurrentVideo);
                 RefreshCurrentVideoBindings();
                 _ = EnrichCurrentVideoAsync();
@@ -126,11 +239,38 @@ namespace SmoothTube
             }
         }
 
+        private static bool LooksLikeLiveVideo(VideoItem video)
+        {
+            string title = video?.Title ?? "";
+            string duration = video?.Duration ?? "";
+
+            return video?.IsLive == true ||
+                title.Contains("[ live ]", StringComparison.OrdinalIgnoreCase) ||
+                title.Contains("[live]", StringComparison.OrdinalIgnoreCase) ||
+                title.StartsWith("live ", StringComparison.OrdinalIgnoreCase) ||
+                title.Contains(" live ", StringComparison.OrdinalIgnoreCase) ||
+                title.Contains("livestream", StringComparison.OrdinalIgnoreCase) ||
+                title.Contains("live stream", StringComparison.OrdinalIgnoreCase) ||
+                title.Contains("🔴", StringComparison.OrdinalIgnoreCase) ||
+                duration.Equals("LIVE", StringComparison.OrdinalIgnoreCase);
+        }
+
         private void EnsureCurrentVideoDefaults()
         {
             if (CurrentVideo == null)
             {
                 CurrentVideo = new VideoItem();
+            }
+
+            if (LooksLikeLiveVideo(CurrentVideo))
+            {
+                CurrentVideo.IsLive = true;
+                CurrentVideo.IsPremiere = false;
+
+                if (string.IsNullOrWhiteSpace(CurrentVideo.Duration))
+                {
+                    CurrentVideo.Duration = "LIVE";
+                }
             }
 
             if (string.IsNullOrWhiteSpace(CurrentVideo.Category) &&
@@ -271,12 +411,41 @@ namespace SmoothTube
             object sender,
             RoutedEventArgs e)
         {
+            if (PlayerBorder != null)
+            {
+                PlayerBorder.SizeChanged -= PlayerBorder_SizeChanged;
+                PlayerBorder.SizeChanged += PlayerBorder_SizeChanged;
+            }
+
+            if (MainLayoutGrid != null)
+            {
+                MainLayoutGrid.SizeChanged -= MainLayoutGrid_SizeChanged;
+                MainLayoutGrid.SizeChanged += MainLayoutGrid_SizeChanged;
+            }
+
             if (XamlRoot != null)
             {
                 XamlRoot.Changed += XamlRoot_Changed;
 
                 UpdateLayoutForWidth();
             }
+
+            UpdateLiveChatFrameSize();
+        }
+
+        private void PlayerBorder_SizeChanged(
+            object sender,
+            SizeChangedEventArgs e)
+        {
+            UpdateLiveChatFrameSize();
+        }
+
+        private void MainLayoutGrid_SizeChanged(
+            object sender,
+            SizeChangedEventArgs e)
+        {
+            UpdatePlayerSize();
+            UpdateLiveChatFrameSize();
         }
 
         private void XamlRoot_Changed(
@@ -291,6 +460,7 @@ namespace SmoothTube
             SizeChangedEventArgs e)
         {
             UpdatePlayerSize();
+            UpdateLiveChatFrameSize();
         }
 
         private void UpdateLayoutForWidth()
@@ -342,6 +512,7 @@ namespace SmoothTube
             }
 
             UpdatePlayerSize();
+            UpdateLiveChatFrameSize();
         }
 
         private void ApplyLiveChatLayout()
@@ -358,6 +529,7 @@ namespace SmoothTube
                     : Visibility.Collapsed;
 
             UpdateLiveChatStatusVisibility();
+            UpdateLiveChatFrameSize();
         }
 
         private void UpdatePlayerSize()
@@ -371,6 +543,7 @@ namespace SmoothTube
                 PlayerBorder.Height = XamlRoot.Size.Height;
                 PlayerWebView.Width = XamlRoot.Size.Width;
                 PlayerWebView.Height = XamlRoot.Size.Height;
+                UpdateLiveChatFrameSize();
                 return;
             }
 
@@ -390,6 +563,59 @@ namespace SmoothTube
 
             PlayerWebView.Width = double.NaN;
             PlayerWebView.Height = double.NaN;
+
+            UpdateLiveChatFrameSize();
+        }
+
+        private void UpdateLiveChatFrameSize()
+        {
+            if (PlayerBorder == null)
+                return;
+
+            double playerHeight =
+                PlayerBorder.ActualHeight > 0
+                    ? PlayerBorder.ActualHeight
+                    : PlayerBorder.Height;
+
+            if (double.IsNaN(playerHeight) ||
+                double.IsInfinity(playerHeight) ||
+                playerHeight <= 0)
+            {
+                return;
+            }
+
+            // The chat WebView frame itself should match the video player height.
+            // The chat title/refresh row sits above it, just like the Back button row
+            // sits above the player, so the frame top lines up with PlayerBorder.
+            double frameHeight =
+                Math.Max(180, playerHeight);
+
+            if (LiveChatPanel != null)
+            {
+                LiveChatPanel.Height = double.NaN;
+                LiveChatPanel.MaxHeight = double.PositiveInfinity;
+            }
+
+            if (LiveChatWebViewFrame != null)
+            {
+                LiveChatWebViewFrame.Height = frameHeight;
+                LiveChatWebViewFrame.MaxHeight = frameHeight;
+                LiveChatWebViewFrame.MinHeight = Math.Min(160, frameHeight);
+            }
+
+            if (LiveChatWebView != null)
+            {
+                LiveChatWebView.Height = frameHeight;
+                LiveChatWebView.MaxHeight = frameHeight;
+                LiveChatWebView.MinHeight = Math.Min(160, frameHeight);
+            }
+
+            if (LiveChatMessagesScrollViewer != null)
+            {
+                LiveChatMessagesScrollViewer.Height = frameHeight;
+                LiveChatMessagesScrollViewer.MaxHeight = frameHeight;
+                LiveChatMessagesScrollViewer.MinHeight = Math.Min(160, frameHeight);
+            }
         }
 
         private async Task UpdatePlayerSourceAsync()
@@ -448,23 +674,33 @@ namespace SmoothTube
                 PlayerWebView.CoreWebView2.ContainsFullScreenElementChanged +=
                     CoreWebView2_ContainsFullScreenElementChanged;
 
+                bool shouldPlayLiveEdge =
+                    CurrentVideo.IsLive ||
+                    LooksLikeLiveVideo(CurrentVideo);
+
                 double resumeSeconds =
-                    CurrentVideo.IsLive || CurrentVideo.IsPremiere
+                    shouldPlayLiveEdge || CurrentVideo.IsPremiere
                         ? 0
                         : Math.Max(
                             CurrentVideo.ResumeSeconds,
                             WatchHistoryService.GetResumeSeconds(CurrentVideo.Id));
 
                 string startParameter =
-                    resumeSeconds >= 5
+                    !shouldPlayLiveEdge && resumeSeconds >= 5
                         ? $"&startSeconds={Math.Floor(resumeSeconds).ToString(CultureInfo.InvariantCulture)}"
+                        : "";
+
+                string liveParameter =
+                    shouldPlayLiveEdge
+                        ? "&live=1"
                         : "";
 
                 playbackStartedAt = DateTimeOffset.Now;
                 playbackStartedResumeSeconds = resumeSeconds;
+                playerLoadedForLiveMode = shouldPlayLiveEdge;
 
                 PlayerWebView.CoreWebView2.Navigate(
-                    $"https://smoothtube.local/youtube-player.html?videoId={videoId}{startParameter}");
+                    $"https://smoothtube.local/youtube-player.html?videoId={videoId}{startParameter}{liveParameter}");
             }
         }
 
@@ -892,6 +1128,23 @@ namespace SmoothTube
 
             await InstallPlayerProgressBridgeAsync();
             StartProgressTimer();
+
+            if (CurrentVideo.IsLive || LooksLikeLiveVideo(CurrentVideo))
+            {
+                await Task.Delay(700);
+
+                try
+                {
+                    await PlayerWebView.CoreWebView2.ExecuteScriptAsync(
+                        "window.__smoothTubeForceAutoplay && window.__smoothTubeForceAutoplay();");
+                }
+                catch (InvalidOperationException)
+                {
+                }
+                catch (COMException)
+                {
+                }
+            }
         }
 
         private async Task InstallPlayerProgressBridgeAsync()
@@ -2425,6 +2678,8 @@ namespace SmoothTube
             Comments = [];
             LiveChatMessages = [];
 
+            await EnsureCurrentVideoLiveStatusAsync();
+
             CommentsStatus =
                 CurrentVideo.Category == "YouTube"
                     ? "Loading comments..."
@@ -2440,6 +2695,114 @@ namespace SmoothTube
 
             await LoadCommentsAsync();
             await LoadLiveChatAsync();
+        }
+
+        private async Task EnsureCurrentVideoLiveStatusAsync()
+        {
+            if (CurrentVideo.Category != "YouTube" ||
+                string.IsNullOrWhiteSpace(CurrentVideo.Id))
+            {
+                return;
+            }
+
+            try
+            {
+                // RSS subscription entries do not reliably expose live/premiere/chat state.
+                // Check only the video the user actually opened, so Subscriptions remains
+                // RSS-first and lightweight while VideoPage can still enable live chat.
+                VideoItem? enrichedVideo =
+                    await ServiceLocator.YouTube.GetVideoAsync(CurrentVideo.Id);
+
+                if (enrichedVideo == null)
+                    return;
+
+                bool inferredLive =
+                    LooksLikeLiveVideo(CurrentVideo) ||
+                    LooksLikeLiveVideo(enrichedVideo);
+
+                CurrentVideo.IsLive = enrichedVideo.IsLive || inferredLive;
+                CurrentVideo.IsPremiere = !CurrentVideo.IsLive && enrichedVideo.IsPremiere;
+                CurrentVideo.LiveChatId = enrichedVideo.LiveChatId;
+
+                if (CurrentVideo.IsLive && string.IsNullOrWhiteSpace(CurrentVideo.Duration))
+                {
+                    CurrentVideo.Duration = "LIVE";
+                }
+
+                if (!string.IsNullOrWhiteSpace(enrichedVideo.Duration))
+                    CurrentVideo.Duration = enrichedVideo.Duration;
+
+                if (!string.IsNullOrWhiteSpace(enrichedVideo.Views))
+                    CurrentVideo.Views = enrichedVideo.Views;
+
+                if (!string.IsNullOrWhiteSpace(enrichedVideo.Likes))
+                    CurrentVideo.Likes = enrichedVideo.Likes;
+
+                if (!string.IsNullOrWhiteSpace(enrichedVideo.ChannelId))
+                    CurrentVideo.ChannelId = enrichedVideo.ChannelId;
+
+                if (!string.IsNullOrWhiteSpace(enrichedVideo.Channel))
+                    CurrentVideo.Channel = enrichedVideo.Channel;
+
+                if (!string.IsNullOrWhiteSpace(enrichedVideo.PublishedAt))
+                    CurrentVideo.PublishedAt = enrichedVideo.PublishedAt;
+
+                if (enrichedVideo.PublishedAtSort.HasValue)
+                    CurrentVideo.PublishedAtSort = enrichedVideo.PublishedAtSort;
+
+                if (!string.IsNullOrWhiteSpace(enrichedVideo.Description) &&
+                    string.IsNullOrWhiteSpace(CurrentVideo.Description))
+                {
+                    CurrentVideo.Description = enrichedVideo.Description;
+                }
+
+                if (!string.IsNullOrWhiteSpace(enrichedVideo.Thumbnail))
+                    CurrentVideo.Thumbnail = enrichedVideo.Thumbnail;
+
+                CurrentVideo.IsEmbeddable = enrichedVideo.IsEmbeddable;
+
+                RefreshCurrentVideoBindings();
+
+                // RecordStarted runs before RSS-only videos are enriched.
+                // Once this single-video check discovers live/premiere state,
+                // update Continue Watching so Home shows the LIVE/Premiere badge too.
+                WatchHistoryService.UpdateMetadata(CurrentVideo);
+
+                if (CurrentVideo.IsLive)
+                {
+                    CurrentVideo.ResumeSeconds = 0;
+                    CurrentVideo.Progress = 0;
+                    CurrentVideo.DurationSeconds = 0;
+
+                    if (!playerLoadedForLiveMode)
+                    {
+                        await UpdatePlayerSourceAsync();
+                    }
+
+                    UpdateLiveChatFrameSize();
+                }
+            }
+            catch (Exception ex) when (ex is HttpRequestException ||
+                ex is TaskCanceledException ||
+                ex is InvalidOperationException)
+            {
+                // Keep the RSS-provided video playable even if single-video live status
+                // enrichment is unavailable. If the RSS title strongly looks live, still
+                // mark it so Continue Watching and VideoPage badges stay useful.
+                if (LooksLikeLiveVideo(CurrentVideo))
+                {
+                    CurrentVideo.IsLive = true;
+                    CurrentVideo.IsPremiere = false;
+
+                    if (string.IsNullOrWhiteSpace(CurrentVideo.Duration))
+                    {
+                        CurrentVideo.Duration = "LIVE";
+                    }
+
+                    RefreshCurrentVideoBindings();
+                    WatchHistoryService.UpdateMetadata(CurrentVideo);
+                }
+            }
         }
 
         private async Task LoadCommentsAsync()
@@ -2511,6 +2874,7 @@ namespace SmoothTube
             {
                 LiveChatMessagesScrollViewer.Visibility = Visibility.Collapsed;
                 LiveChatWebViewFrame.Visibility = Visibility.Visible;
+                UpdateLiveChatFrameSize();
 
                 await LiveChatWebView.EnsureCoreWebView2Async();
 
@@ -2518,11 +2882,18 @@ namespace SmoothTube
                     Uri.EscapeDataString(CurrentVideo.Id);
 
                 LiveChatWebView.CoreWebView2.Navigate(
-                    $"https://www.youtube.com/live_chat?v={videoId}&embed_domain=smoothtube.local");
+                    $"https://www.youtube.com/live_chat?is_popout=1&v={videoId}");
 
                 LiveChatStatus = "";
                 Bindings.Update();
                 UpdateLiveChatStatusVisibility();
+                UpdateLiveChatFrameSize();
+
+                _ = DispatcherQueue.TryEnqueue(() =>
+                {
+                    UpdatePlayerSize();
+                    UpdateLiveChatFrameSize();
+                });
             }
             catch (Exception ex) when (ex is InvalidOperationException ||
                 ex is COMException)
@@ -2536,7 +2907,7 @@ namespace SmoothTube
 
         private void HideLiveChatEmbed()
         {
-            if (LiveChatWebView != null)
+            if (LiveChatWebViewFrame != null)
             {
                 LiveChatWebViewFrame.Visibility = Visibility.Collapsed;
             }
@@ -2562,6 +2933,8 @@ namespace SmoothTube
                 SidebarLiveChatStatusTextBlock.Visibility =
                     LiveChatStatusTextBlock.Visibility;
             }
+
+            UpdateLiveChatFrameSize();
         }
     }
 }

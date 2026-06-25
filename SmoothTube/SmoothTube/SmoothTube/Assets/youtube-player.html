@@ -31,6 +31,7 @@
     const params = new URLSearchParams(window.location.search);
     const videoId = params.get("videoId") || "";
     const startSeconds = Math.max(0, Number(params.get("startSeconds") || 0));
+    const isLivePlayback = params.get("live") === "1";
 
     let idleTimer = 0;
     let progressTimer = 0;
@@ -113,7 +114,7 @@
     window.__smoothTubeGetProgress = type => buildProgressPayload(type || "snapshot");
 
     function applyResume() {
-      if (resumeApplied || startSeconds < 5) {
+      if (isLivePlayback || resumeApplied || startSeconds < 5) {
         return;
       }
 
@@ -133,6 +134,17 @@
 
 
 
+    function seekToLiveEdge() {
+      // For livestreams, do not manually seek using getDuration().
+      // YouTube's live/DVR duration can point to the start/end of the event and
+      // manual seeking often causes buffering. Loading without startSeconds lets
+      // YouTube choose the live edge.
+      return false;
+    }
+
+    window.__smoothTubeSeekToLiveEdge = seekToLiveEdge;
+
+
     function tryStartPlayback() {
       const player = getPlayer();
 
@@ -141,6 +153,13 @@
       }
 
       try {
+        // WebView2/Chromium can block live autoplay with sound more often than
+        // normal VOD autoplay. Start muted if needed, then unmute once playback
+        // has actually started.
+        if (isLivePlayback && typeof player.mute === "function") {
+          player.mute();
+        }
+
         player.playVideo();
         reportProgress("autoplay");
       } catch (_) {
@@ -179,8 +198,13 @@
           applyResume();
           tryStartPlayback();
 
-          if (autoPlayAttempts++ < 12) {
-            window.__smoothTubeAutoplayRetryTimer = setTimeout(retry, 400);
+          const maxAttempts = isLivePlayback ? 60 : 12;
+          const retryDelay = isLivePlayback ? 500 : 400;
+
+          if (autoPlayAttempts++ < maxAttempts) {
+            window.__smoothTubeAutoplayRetryTimer = setTimeout(retry, retryDelay);
+          } else if (isLivePlayback) {
+            postMessage({ type: "autoplay-blocked", videoId });
           }
         }
       };
@@ -195,7 +219,63 @@
       }, 3000);
     }
 
+    window.__smoothTubeForceAutoplay = () => {
+      userPaused = false;
+
+      const player = getPlayer();
+
+      try {
+        if (isLivePlayback && player && typeof player.mute === "function") {
+          player.mute();
+        }
+      } catch (_) {
+      }
+
+      tryStartPlayback();
+      startPlaybackWithRetries();
+      return true;
+    };
+
     window.__smoothTubeReportProgress = () => reportProgress("progress");
+    window.__smoothTubeTogglePlayback = () => {
+      const player = getPlayer();
+
+      if (!player) {
+        return false;
+      }
+
+      try {
+        let state = -999;
+
+        if (typeof player.getPlayerState === "function") {
+          state = player.getPlayerState();
+        }
+
+        if (state === YT.PlayerState.PLAYING || state === YT.PlayerState.BUFFERING) {
+          userPaused = true;
+          clearTimeout(window.__smoothTubeAutoplayRetryTimer);
+
+          if (typeof player.pauseVideo === "function") {
+            player.pauseVideo();
+          }
+
+          reportProgress("paused");
+          return true;
+        }
+
+        userPaused = false;
+
+        if (typeof player.playVideo === "function") {
+          player.playVideo();
+        }
+
+        reportProgress("playing");
+        return true;
+      } catch (_) {
+        return false;
+      }
+    };
+
     window.__smoothTubeApplyResume = seconds => {
       const player = getPlayer();
 
@@ -239,7 +319,8 @@
           rel: 0,
           modestbranding: 1,
           origin: window.location.origin,
-          start: startSeconds >= 5 ? Math.floor(startSeconds) : undefined
+          mute: isLivePlayback ? 1 : 0,
+          start: !isLivePlayback && startSeconds >= 5 ? Math.floor(startSeconds) : undefined
         },
         events: {
           onReady: () => {
@@ -248,11 +329,17 @@
             applyResume();
             reportProgress("ready");
             startProgressReporting();
-            startPlaybackWithRetries();
+            window.__smoothTubeForceAutoplay();
+
+            if (isLivePlayback) {
+              setTimeout(window.__smoothTubeForceAutoplay, 400);
+              setTimeout(window.__smoothTubeForceAutoplay, 1200);
+              setTimeout(window.__smoothTubeForceAutoplay, 2500);
+            }
           },
           onStateChange: event => {
             if (event.data === YT.PlayerState.CUED && !hasStartedPlaying && !userPaused) {
-              startPlaybackWithRetries();
+              window.__smoothTubeForceAutoplay();
             }
 
             if (event.data === YT.PlayerState.PLAYING) {
@@ -260,6 +347,16 @@
               userPaused = false;
               clearTimeout(window.__smoothTubeAutoplayRetryTimer);
               applyResume();
+
+              if (isLivePlayback && typeof getPlayer()?.unMute === "function") {
+                setTimeout(() => {
+                  try {
+                    getPlayer()?.unMute();
+                  } catch (_) {
+                  }
+                }, 900);
+              }
+
               reportProgress("playing");
               startProgressReporting();
             }
@@ -275,8 +372,11 @@
 
             if (event.data === YT.PlayerState.ENDED) {
               reportProgress("ended");
-              postMessage({ type: "ended" });
-              window.chrome?.webview?.postMessage("ended");
+
+              if (!isLivePlayback) {
+                postMessage({ type: "ended" });
+                window.chrome?.webview?.postMessage("ended");
+              }
             }
           }
         }

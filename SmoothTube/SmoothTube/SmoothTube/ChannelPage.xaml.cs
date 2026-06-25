@@ -14,13 +14,17 @@ namespace SmoothTube
 {
     public sealed partial class ChannelPage : Page
     {
-        private const string ChannelCacheFileName = "channel-page-cache.json";
+        private const string ChannelCacheFileName = "channel-page-cache-v2.json";
 
         private sealed class ChannelPageCacheEntry
         {
             public ChannelItem Channel { get; set; } = new();
             public List<VideoItem> Videos { get; set; } = [];
             public int RequestedUploadCount { get; set; }
+            public int RequestedShortCount { get; set; }
+            public int RequestedLivestreamCount { get; set; }
+            public bool ShortsLoaded { get; set; }
+            public bool LivestreamsLoaded { get; set; }
             public bool? IsSubscribed { get; set; }
             public DateTimeOffset LastLoadedAt { get; set; } = DateTimeOffset.Now;
         }
@@ -42,8 +46,17 @@ namespace SmoothTube
 
         public string StatusText { get; set; } = "";
 
+        public string LoadingText { get; set; } = "Loading channel...";
+
+        public Visibility LoadingVisibility { get; set; } = Visibility.Collapsed;
+
         private int requestedUploadCount = 24;
+        private int requestedShortCount = 24;
+        private int requestedLivestreamCount = 24;
+        private bool shortsLoaded;
+        private bool livestreamsLoaded;
         private bool isLoadingMore;
+        private bool isLoadingTab;
 
         protected override void OnNavigatedTo(
             NavigationEventArgs e)
@@ -54,6 +67,15 @@ namespace SmoothTube
             {
                 Channel = channel;
                 requestedUploadCount = 24;
+                requestedShortCount = 24;
+                requestedLivestreamCount = 24;
+                shortsLoaded = false;
+                livestreamsLoaded = false;
+                allVideos.Clear();
+                UploadVideos.Clear();
+                ShortVideos.Clear();
+                LivestreamVideos.Clear();
+                SetLoading("Loading channel uploads...");
                 Bindings.Update();
                 UpdateBannerVisibility();
                 _ = LoadChannelAsync(false);
@@ -69,11 +91,13 @@ namespace SmoothTube
         {
             if (!forceRefresh && TryLoadFromCache())
             {
+                ClearLoading();
                 Bindings.Update();
                 return;
             }
 
-            StatusText = "Loading channel...";
+            SetLoading("Loading channel uploads...");
+            StatusText = "Loading channel uploads...";
             Bindings.Update();
 
             try
@@ -91,21 +115,30 @@ namespace SmoothTube
                 bool isSubscribed =
                     await UpdateSubscriptionButtonAsync();
 
+                // Fetch a wider candidate range, then show uploads only.
+                // Many channels mix Shorts/lives into their latest items, so asking for
+                // only 24 total items can leave the Uploads tab with just a few videos.
                 List<VideoItem> videos =
                     await ServiceLocator.YouTube.GetChannelVideosAsync(
                         Channel.Id,
-                        requestedUploadCount);
+                        Math.Max(96, requestedUploadCount * 4));
 
-                ReplaceVideos(videos);
+                ReplaceVideos(
+                    videos,
+                    includeShorts: false,
+                    includeLivestreams: false);
+
                 SaveToCache(isSubscribed);
             }
             catch (Exception ex)
             {
+                ClearLoading();
                 StatusText = $"Could not load this channel: {ex.Message}";
                 Bindings.Update();
                 return;
             }
 
+            ClearLoading();
             StatusText = FormatLoadedStatusText();
             Bindings.Update();
         }
@@ -118,14 +151,62 @@ namespace SmoothTube
                 return;
 
             isLoadingMore = true;
+
+            int selectedIndex = ChannelContentPivot?.SelectedIndex ?? 0;
+
+            if (selectedIndex == 1)
+            {
+                requestedShortCount += 24;
+                SetLoading("Loading more shorts...");
+                StatusText = "Loading more shorts...";
+                Bindings.Update();
+
+                int previousCount = ShortVideos.Count;
+                await LoadShortsAsync(forceRefresh: true);
+
+                if (ShortVideos.Count <= previousCount)
+                {
+                    StatusText =
+                        "No more shorts were returned for this channel.\n" +
+                        FormatLoadedStatusText();
+                    Bindings.Update();
+                }
+
+                isLoadingMore = false;
+                return;
+            }
+
+            if (selectedIndex == 2)
+            {
+                requestedLivestreamCount += 24;
+                SetLoading("Loading more livestreams...");
+                StatusText = "Loading more livestreams...";
+                Bindings.Update();
+
+                int previousCount = LivestreamVideos.Count;
+                await LoadLivestreamsAsync(forceRefresh: true);
+
+                if (LivestreamVideos.Count <= previousCount)
+                {
+                    StatusText =
+                        "No more livestreams were returned for this channel.\n" +
+                        FormatLoadedStatusText();
+                    Bindings.Update();
+                }
+
+                isLoadingMore = false;
+                return;
+            }
+
             requestedUploadCount += 24;
+            SetLoading("Loading more uploads...");
             StatusText = "Loading more uploads...";
             Bindings.Update();
 
-            int previousCount = allVideos.Count;
+            int previousUploadCount = UploadVideos.Count;
             await LoadChannelAsync(false);
 
-            if (allVideos.Count <= previousCount)
+            if (UploadVideos.Count <= previousUploadCount)
             {
                 StatusText =
                     "No more uploads were returned for this channel.\n" +
@@ -135,6 +216,149 @@ namespace SmoothTube
             }
 
             isLoadingMore = false;
+        }
+
+        private async void ChannelContentPivot_SelectionChanged(
+            object sender,
+            SelectionChangedEventArgs e)
+        {
+            if (isLoadingTab)
+                return;
+
+            if (ChannelContentPivot == null ||
+                string.IsNullOrWhiteSpace(Channel.Id))
+            {
+                return;
+            }
+
+            if (ChannelContentPivot.SelectedIndex == 1 &&
+                !shortsLoaded)
+            {
+                await LoadShortsAsync(false);
+            }
+            else if (ChannelContentPivot.SelectedIndex == 2 &&
+                !livestreamsLoaded)
+            {
+                await LoadLivestreamsAsync(false);
+            }
+            else
+            {
+                StatusText = FormatLoadedStatusText();
+                Bindings.Update();
+            }
+        }
+
+        private async System.Threading.Tasks.Task LoadShortsAsync(bool forceRefresh)
+        {
+            if (!forceRefresh &&
+                shortsLoaded &&
+                ShortVideos.Count > 0)
+            {
+                StatusText = FormatLoadedStatusText();
+                Bindings.Update();
+                return;
+            }
+
+            isLoadingTab = true;
+            SetLoading("Loading shorts...");
+            StatusText = "Loading shorts...";
+            Bindings.Update();
+
+            try
+            {
+                List<VideoItem> videos =
+                    await ServiceLocator.YouTube.GetChannelVideosAsync(
+                        Channel.Id,
+                        Math.Max(72, requestedShortCount * 4));
+
+                List<VideoItem> shorts =
+                    videos
+                        .Where(IsLikelyShort)
+                        .GroupBy(video => video.Id)
+                        .Select(group => group.First())
+                        .OrderByDescending(video => video.PublishedAtSort ?? DateTimeOffset.MinValue)
+                        .Take(requestedShortCount)
+                        .ToList();
+
+                ReplaceCollection(ShortVideos, shorts);
+                MergeIntoAllVideos(shorts);
+                shortsLoaded = true;
+
+                SaveToCache(
+                    SubscribeButton?.Content?.ToString() == "Subscribed");
+
+                StatusText = FormatLoadedStatusText();
+            }
+            catch (Exception ex)
+            {
+                StatusText = $"Could not load shorts: {ex.Message}";
+            }
+
+            isLoadingTab = false;
+            ClearLoading();
+            Bindings.Update();
+        }
+
+        private async System.Threading.Tasks.Task LoadLivestreamsAsync(bool forceRefresh)
+        {
+            if (!forceRefresh &&
+                livestreamsLoaded &&
+                LivestreamVideos.Count > 0)
+            {
+                StatusText = FormatLoadedStatusText();
+                Bindings.Update();
+                return;
+            }
+
+            isLoadingTab = true;
+            SetLoading("Loading livestreams...");
+            StatusText = "Loading livestreams...";
+            Bindings.Update();
+
+            try
+            {
+                List<VideoItem> videos =
+                    await ServiceLocator.YouTube.GetChannelVideosAsync(
+                        Channel.Id,
+                        Math.Max(72, requestedLivestreamCount * 4));
+
+                List<VideoItem> livestreams =
+                    videos
+                        .Where(IsLikelyLivestream)
+                        .GroupBy(video => video.Id)
+                        .Select(group => group.First())
+                        .OrderByDescending(video => video.PublishedAtSort ?? DateTimeOffset.MinValue)
+                        .Take(requestedLivestreamCount)
+                        .ToList();
+
+                ReplaceCollection(LivestreamVideos, livestreams);
+                MergeIntoAllVideos(livestreams);
+                livestreamsLoaded = true;
+
+                SaveToCache(
+                    SubscribeButton?.Content?.ToString() == "Subscribed");
+
+                StatusText = FormatLoadedStatusText();
+            }
+            catch (Exception ex)
+            {
+                StatusText = $"Could not load livestreams: {ex.Message}";
+            }
+
+            isLoadingTab = false;
+            ClearLoading();
+            Bindings.Update();
+        }
+
+        private void SetLoading(string message)
+        {
+            LoadingText = message;
+            LoadingVisibility = Visibility.Visible;
+        }
+
+        private void ClearLoading()
+        {
+            LoadingVisibility = Visibility.Collapsed;
         }
 
         private static void EnsurePersistentChannelCacheLoaded()
@@ -175,7 +399,17 @@ namespace SmoothTube
             }
 
             Channel = cache.Channel;
-            ReplaceVideos(cache.Videos.Take(requestedUploadCount));
+
+            requestedShortCount = Math.Max(requestedShortCount, cache.RequestedShortCount);
+            requestedLivestreamCount = Math.Max(requestedLivestreamCount, cache.RequestedLivestreamCount);
+            shortsLoaded = cache.ShortsLoaded;
+            livestreamsLoaded = cache.LivestreamsLoaded;
+
+            ReplaceVideos(
+                cache.Videos,
+                includeShorts: shortsLoaded,
+                includeLivestreams: livestreamsLoaded);
+
             StatusText = FormatLoadedStatusText(cache.LastLoadedAt);
             UpdateBannerVisibility();
 
@@ -197,6 +431,10 @@ namespace SmoothTube
                 Channel = Channel,
                 Videos = allVideos.ToList(),
                 RequestedUploadCount = requestedUploadCount,
+                RequestedShortCount = requestedShortCount,
+                RequestedLivestreamCount = requestedLivestreamCount,
+                ShortsLoaded = shortsLoaded,
+                LivestreamsLoaded = livestreamsLoaded,
                 IsSubscribed = isSubscribed,
                 LastLoadedAt = DateTimeOffset.Now
             };
@@ -208,12 +446,54 @@ namespace SmoothTube
 
         private string FormatLoadedStatusText(DateTimeOffset? lastLoadedAt = null)
         {
-            if (allVideos.Count == 0)
-                return "No recent uploads loaded for this channel.\nLoad more to fetch additional content.";
+            string selectedSection =
+                (ChannelContentPivot?.SelectedIndex ?? 0) switch
+                {
+                    1 => "shorts",
+                    2 => "livestreams",
+                    _ => "uploads"
+                };
+
+            int selectedCount =
+                (ChannelContentPivot?.SelectedIndex ?? 0) switch
+                {
+                    1 => ShortVideos.Count,
+                    2 => LivestreamVideos.Count,
+                    _ => UploadVideos.Count
+                };
+
+            if (selectedCount == 0)
+            {
+                string emptyText =
+                    selectedSection == "uploads"
+                        ? "No recent uploads loaded for this channel."
+                        : $"No {selectedSection} loaded for this channel yet.";
+
+                return emptyText + "\nLoad more to fetch additional content.";
+            }
 
             string text =
-                $"Currently loaded: {UploadVideos.Count} uploads • {ShortVideos.Count} shorts • {LivestreamVideos.Count} livestreams\n" +
-                "Load more to fetch additional content.";
+                $"Currently loaded: {UploadVideos.Count} uploads";
+
+            if (shortsLoaded)
+            {
+                text += $" • {ShortVideos.Count} shorts";
+            }
+            else
+            {
+                text += " • Shorts load when you open the Shorts tab";
+            }
+
+            if (livestreamsLoaded)
+            {
+                text += $" • {LivestreamVideos.Count} livestreams";
+            }
+            else
+            {
+                text += " • Livestreams load when you open the Livestreams tab";
+            }
+
+            text += "\nLoad more to fetch additional content for the selected tab.";
 
             if (lastLoadedAt.HasValue)
             {
@@ -223,36 +503,80 @@ namespace SmoothTube
             return text;
         }
 
-        private void ReplaceVideos(IEnumerable<VideoItem> videos)
+        private void ReplaceVideos(
+            IEnumerable<VideoItem> videos,
+            bool includeShorts,
+            bool includeLivestreams)
         {
-            allVideos =
+            List<VideoItem> normalizedVideos =
                 videos
                     .Where(video => !string.IsNullOrWhiteSpace(video.Id))
                     .GroupBy(video => video.Id)
                     .Select(group => group.First())
+                    .OrderByDescending(video => video.PublishedAtSort ?? DateTimeOffset.MinValue)
                     .ToList();
 
-            UploadVideos.Clear();
-            ShortVideos.Clear();
-            LivestreamVideos.Clear();
+            MergeIntoAllVideos(normalizedVideos);
 
-            foreach (VideoItem video in allVideos.Where(video =>
-                !video.IsLive &&
-                !IsLikelyShort(video)))
+            ReplaceCollection(
+                UploadVideos,
+                allVideos
+                    .Where(video =>
+                        !IsLikelyLivestream(video) &&
+                        !IsLikelyShort(video))
+                    .OrderByDescending(video => video.PublishedAtSort ?? DateTimeOffset.MinValue)
+                    .Take(requestedUploadCount));
+
+            if (includeShorts)
             {
-                UploadVideos.Add(video);
+                ReplaceCollection(
+                    ShortVideos,
+                    allVideos
+                        .Where(IsLikelyShort)
+                        .OrderByDescending(video => video.PublishedAtSort ?? DateTimeOffset.MinValue)
+                        .Take(requestedShortCount));
+            }
+            else
+            {
+                ShortVideos.Clear();
             }
 
-            foreach (VideoItem video in allVideos.Where(video =>
-                !video.IsLive &&
-                IsLikelyShort(video)))
+            if (includeLivestreams)
             {
-                ShortVideos.Add(video);
+                ReplaceCollection(
+                    LivestreamVideos,
+                    allVideos
+                        .Where(IsLikelyLivestream)
+                        .OrderByDescending(video => video.PublishedAtSort ?? DateTimeOffset.MinValue)
+                        .Take(requestedLivestreamCount));
             }
-
-            foreach (VideoItem video in allVideos.Where(video => video.IsLive))
+            else
             {
-                LivestreamVideos.Add(video);
+                LivestreamVideos.Clear();
+            }
+        }
+
+        private void MergeIntoAllVideos(IEnumerable<VideoItem> videos)
+        {
+            allVideos =
+                allVideos
+                    .Concat(videos)
+                    .Where(video => !string.IsNullOrWhiteSpace(video.Id))
+                    .GroupBy(video => video.Id)
+                    .Select(group => group.First())
+                    .OrderByDescending(video => video.PublishedAtSort ?? DateTimeOffset.MinValue)
+                    .ToList();
+        }
+
+        private static void ReplaceCollection(
+            ObservableCollection<VideoItem> target,
+            IEnumerable<VideoItem> videos)
+        {
+            target.Clear();
+
+            foreach (VideoItem video in videos)
+            {
+                target.Add(video);
             }
         }
 
@@ -268,6 +592,21 @@ namespace SmoothTube
                 title.Contains(" shorts", StringComparison.OrdinalIgnoreCase) ||
                 title.Contains(" short ", StringComparison.OrdinalIgnoreCase) ||
                 title.EndsWith(" short", StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static bool IsLikelyLivestream(VideoItem video)
+        {
+            if (video.IsLive || video.IsPremiere)
+                return true;
+
+            string title = video.Title ?? "";
+
+            return
+                title.Contains("livestream", StringComparison.OrdinalIgnoreCase) ||
+                title.Contains("live stream", StringComparison.OrdinalIgnoreCase) ||
+                title.Contains(" live ", StringComparison.OrdinalIgnoreCase) ||
+                title.EndsWith(" live", StringComparison.OrdinalIgnoreCase) ||
+                title.Contains("premiere", StringComparison.OrdinalIgnoreCase);
         }
 
         private void UpdateBannerVisibility()

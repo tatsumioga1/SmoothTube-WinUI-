@@ -2,8 +2,10 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media.Imaging;
+using Microsoft.UI.Xaml.Navigation;
 using SmoothTube.Models;
 using SmoothTube.Services;
+using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Linq;
 using System.Threading;
@@ -13,6 +15,10 @@ namespace SmoothTube
 {
     public sealed partial class SearchPage : Page
     {
+        private static string cachedQuery = "";
+        private static string cachedStatusText = "Search for videos or channels.";
+        private static readonly List<SearchResultItem> CachedResults = [];
+
         public ObservableCollection<SearchResultItem> Results { get; } = [];
 
         public bool IsSearching { get; set; }
@@ -26,6 +32,35 @@ namespace SmoothTube
         public SearchPage()
         {
             InitializeComponent();
+            NavigationCacheMode = NavigationCacheMode.Required;
+            Loaded += SearchPage_Loaded;
+        }
+
+        private void SearchPage_Loaded(
+            object sender,
+            RoutedEventArgs e)
+        {
+            if (!string.IsNullOrWhiteSpace(cachedQuery) &&
+                SearchBox.Text != cachedQuery)
+            {
+                SearchBox.Text = cachedQuery;
+            }
+
+            if (CachedResults.Count > 0 &&
+                Results.Count == 0)
+            {
+                Results.Clear();
+
+                foreach (SearchResultItem result in CachedResults)
+                {
+                    Results.Add(result);
+                }
+
+                StatusText = cachedStatusText;
+                LoadingVisibility = Visibility.Collapsed;
+                IsSearching = false;
+                Bindings.Update();
+            }
         }
 
         private async void SearchButton_Click(
@@ -94,10 +129,16 @@ namespace SmoothTube
                     Results.Add(result);
                 }
 
+                cachedQuery = query.Trim();
+                CachedResults.Clear();
+                CachedResults.AddRange(Results);
+
                 StatusText =
                     Results.Count == 0
                         ? "No results found."
                         : $"{Results.Count} results";
+
+                cachedStatusText = StatusText;
             }
             catch (TaskCanceledException)
             {

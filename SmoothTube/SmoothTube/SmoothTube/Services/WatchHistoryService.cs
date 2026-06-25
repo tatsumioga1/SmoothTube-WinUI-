@@ -51,7 +51,8 @@ namespace SmoothTube.Services
             if (video == null ||
                 string.IsNullOrWhiteSpace(video.Id) ||
                 video.IsLive ||
-                video.IsPremiere)
+                video.IsPremiere ||
+                LooksLikeLiveVideo(video))
             {
                 return;
             }
@@ -217,7 +218,7 @@ namespace SmoothTube.Services
                 foreach (VideoItem video in normalizedVideos.Take(12))
                 {
                     System.Diagnostics.Debug.WriteLine(
-                        $"SmoothTube home history item | Video: {video.Id} | Progress: {video.Progress} | Resume: {video.ResumeSeconds} | DurationSeconds: {video.DurationSeconds} | Title: {video.Title}");
+                        $"SmoothTube home history item | Video: {video.Id} | IsLive: {video.IsLive} | IsPremiere: {video.IsPremiere} | Progress: {video.Progress} | Resume: {video.ResumeSeconds} | DurationSeconds: {video.DurationSeconds} | Title: {video.Title}");
                 }
 
                 return normalizedVideos;
@@ -257,6 +258,22 @@ namespace SmoothTube.Services
             Save(NormalizeHistory(videos));
         }
 
+        private static bool LooksLikeLiveVideo(VideoItem? video)
+        {
+            string title = video?.Title ?? "";
+            string duration = video?.Duration ?? "";
+
+            return video?.IsLive == true ||
+                title.Contains("[ live ]", StringComparison.OrdinalIgnoreCase) ||
+                title.Contains("[live]", StringComparison.OrdinalIgnoreCase) ||
+                title.StartsWith("live ", StringComparison.OrdinalIgnoreCase) ||
+                title.Contains(" live ", StringComparison.OrdinalIgnoreCase) ||
+                title.Contains("livestream", StringComparison.OrdinalIgnoreCase) ||
+                title.Contains("live stream", StringComparison.OrdinalIgnoreCase) ||
+                title.Contains("🔴", StringComparison.OrdinalIgnoreCase) ||
+                duration.Equals("LIVE", StringComparison.OrdinalIgnoreCase);
+        }
+
         private static VideoItem CreateHistoryItem(
             VideoItem source,
             VideoItem? existing = null)
@@ -287,6 +304,22 @@ namespace SmoothTube.Services
                         ? existing?.Duration ?? ""
                         : FormatDurationFromSeconds(durationSeconds);
 
+            bool isLive =
+                LooksLikeLiveVideo(source) ||
+                LooksLikeLiveVideo(existing);
+
+            bool isPremiere =
+                !isLive &&
+                (source.IsPremiere || existing?.IsPremiere == true);
+
+            if (isLive)
+            {
+                durationText = "LIVE";
+                resumeSeconds = 0;
+                durationSeconds = 0;
+                progress = 0;
+            }
+
             return new VideoItem
             {
                 Id = source.Id,
@@ -303,9 +336,10 @@ namespace SmoothTube.Services
                 Category = string.IsNullOrWhiteSpace(source.Category) ? existing?.Category ?? "YouTube" : source.Category,
                 ChannelId = string.IsNullOrWhiteSpace(source.ChannelId) ? existing?.ChannelId ?? "" : source.ChannelId,
                 IsEmbeddable = source.IsEmbeddable || existing?.IsEmbeddable == true,
-                IsLive = source.IsLive,
-                IsPremiere = source.IsPremiere,
+                IsLive = isLive,
+                IsPremiere = isPremiere,
                 IsShort = source.IsShort || existing?.IsShort == true,
+                LiveChatId = string.IsNullOrWhiteSpace(source.LiveChatId) ? existing?.LiveChatId ?? "" : source.LiveChatId,
                 Progress = NormalizeProgress(progress),
                 ResumeSeconds = Math.Max(0, resumeSeconds),
                 DurationSeconds = Math.Max(0, durationSeconds),
@@ -354,10 +388,21 @@ namespace SmoothTube.Services
                             FormatDurationFromSeconds(video.DurationSeconds);
                     }
 
+                    if (LooksLikeLiveVideo(video))
+                    {
+                        video.IsLive = true;
+                        video.IsPremiere = false;
+
+                        if (string.IsNullOrWhiteSpace(video.Duration))
+                        {
+                            video.Duration = "LIVE";
+                        }
+                    }
+
                     video.Progress = NormalizeProgress(video.Progress);
                     return video;
                 })
-                .Where(video => video.Progress < CompletedProgressThreshold)
+                .Where(video => video.IsLive || video.IsPremiere || video.Progress < CompletedProgressThreshold)
                 .OrderByDescending(video => video.LastWatchedAt ?? DateTimeOffset.MinValue)
                 .Take(MaxContinueWatchingItems)
                 .ToList();

@@ -88,12 +88,35 @@
 
             </Grid>
 
-            <TextBlock
-                Text="{x:Bind StatusText}"
-                TextWrapping="Wrap"
-                Opacity="0.75"/>
+            <StackPanel Spacing="8">
 
-            <Pivot>
+                <StackPanel
+                    Orientation="Horizontal"
+                    Spacing="10"
+                    Visibility="{x:Bind LoadingVisibility, Mode=OneWay}">
+
+                    <ProgressRing
+                        Width="18"
+                        Height="18"
+                        IsActive="True"/>
+
+                    <TextBlock
+                        Text="{x:Bind LoadingText, Mode=OneWay}"
+                        VerticalAlignment="Center"
+                        Opacity="0.85"/>
+
+                </StackPanel>
+
+                <TextBlock
+                    Text="{x:Bind StatusText, Mode=OneWay}"
+                    TextWrapping="Wrap"
+                    Opacity="0.75"/>
+
+            </StackPanel>
+
+            <Pivot
+                x:Name="ChannelContentPivot"
+                SelectionChanged="ChannelContentPivot_SelectionChanged">
 
                 <PivotItem Header="Uploads">
 

@@ -483,18 +483,18 @@
             <StackPanel
                 x:Name="UpNextPanel"
                 Grid.Column="1"
-                Width="340"
                 HorizontalAlignment="Stretch"
                 Spacing="24">
 
                 <StackPanel
                     x:Name="LiveChatPanel"
+                    HorizontalAlignment="Stretch"
+                    VerticalAlignment="Top"
                     Spacing="0"
                     Visibility="Collapsed">
 
                     <Grid
                         x:Name="LiveChatHeaderGrid"
-                        Width="340"
                         Height="{Binding ActualHeight, ElementName=VideoActionsPanel}"
                         HorizontalAlignment="Stretch"
                         ColumnSpacing="12">
@@ -534,21 +534,25 @@
 
                         <Border
                             x:Name="LiveChatWebViewFrame"
-                            Height="{Binding ActualHeight, ElementName=PlayerBorder}"
+                            MinHeight="160"
                             Margin="0,24,0,0"
+                            HorizontalAlignment="Stretch"
+                            VerticalAlignment="Top"
                             CornerRadius="12"
                             Background="#111111"
                             Visibility="Collapsed">
 
                             <WebView2
-                            x:Name="LiveChatWebView"/>
+                                x:Name="LiveChatWebView"
+                                HorizontalAlignment="Stretch"
+                                VerticalAlignment="Stretch"/>
 
                     </Border>
 
                     <ScrollViewer
                         x:Name="LiveChatMessagesScrollViewer"
                         Margin="0,8,0,0"
-                        MaxHeight="{Binding ActualHeight, ElementName=PlayerBorder}">
+                        MinHeight="160">
 
                         <ItemsControl
                             ItemsSource="{x:Bind LiveChatMessages}">
@@ -594,7 +598,6 @@
 
                     <Grid
                         x:Name="UpNextHeaderGrid"
-                        Width="340"
                         Height="{Binding ActualHeight, ElementName=VideoActionsPanel}"
                         HorizontalAlignment="Stretch"
                         Margin="0">

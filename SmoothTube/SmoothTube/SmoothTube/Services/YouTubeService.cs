@@ -1134,122 +1134,102 @@ namespace SmoothTube.Services
             bool includeShorts = true,
             [EnumeratorCancellation] CancellationToken cancellationToken = default)
         {
-            if (cachedSubscribedVideos != null &&
-                cachedSubscribedVideosDays >= maxAgeDays)
-            {
-                List<VideoItem> cachedVideos =
-                    FilterSubscribedVideos(
-                        cachedSubscribedVideos,
-                        maxAgeDays,
-                        includeShorts)
-                    .Where(video => !video.IsLive && !video.IsPremiere)
-                    .OrderByDescending(GetPublishedAtSort)
-                    .ToList();
-
-                await EnsureVisibleSubscriptionDurationsAsync(
-                    cachedVideos,
-                    cancellationToken);
-
-                if (cachedVideos.Count > 0)
-                {
-                    yield return cachedVideos;
-                }
-
-                yield break;
-            }
-
-            CachedSubscribedVideos? persistedCache =
-                LoadCachedSubscribedVideos();
-
-            if (persistedCache?.Videos.Count > 0 &&
-                persistedCache.MaxAgeDays >= maxAgeDays)
-            {
-                cachedSubscribedVideos = persistedCache.Videos;
-                cachedSubscribedVideosDays = persistedCache.MaxAgeDays;
-
-                List<VideoItem> cachedVideos =
-                    FilterSubscribedVideos(
-                        cachedSubscribedVideos,
-                        maxAgeDays,
-                        includeShorts)
-                    .Where(video => !video.IsLive && !video.IsPremiere)
-                    .OrderByDescending(GetPublishedAtSort)
-                    .ToList();
-
-                await EnsureVisibleSubscriptionDurationsAsync(
-                    cachedVideos,
-                    cancellationToken);
-
-                SaveCachedSubscribedVideos(
-                    cachedSubscribedVideos,
-                    maxAgeDays);
-
-                if (cachedVideos.Count > 0)
-                {
-                    yield return cachedVideos;
-                }
-
-                // Keep refreshing below so stale cache gets replaced with fresh
-                // subscription data, but already show the cached list immediately.
-            }
-
+            // RSS-first subscription refresh:
+            // Do not yield cached data from the service. The page owns the visible cache/window.
+            // This keeps Refresh deterministic: new RSS entries come in, the page merges them
+            // into the visible window, and the oldest visible items drop off.
             List<ChannelItem> subscriptions =
                 await GetSubscriptionsAsync(cancellationToken);
 
-            List<VideoItem> allVideos =
-                await GetSubscribedVideosFromFeedsAsync(
-                    subscriptions,
+            List<VideoItem> freshVideos = [];
+            HashSet<string> yieldedFingerprints = new(StringComparer.OrdinalIgnoreCase);
+
+            foreach (ChannelItem[] chunk in subscriptions.Chunk(4))
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+
+                List<VideoItem>[] groups =
+                    await Task.WhenAll(
+                        chunk.Select(channel =>
+                            GetChannelVideosFromFeedAsync(
+                                channel.Id,
+                                maxAgeDays,
+                                cancellationToken)));
+
+                freshVideos =
+                    CleanSubscribedRecentVideos(
+                        freshVideos.Concat(groups.SelectMany(group => group)),
+                        maxAgeDays,
+                        includeShorts);
+
+                if (freshVideos.Count == 0)
+                    continue;
+
+                string fingerprint =
+                    string.Join(
+                        "|",
+                        freshVideos
+                            .Take(24)
+                            .Select(video => video.Id));
+
+                if (yieldedFingerprints.Add(fingerprint))
+                {
+                    yield return freshVideos;
+                }
+            }
+
+            freshVideos =
+                CleanSubscribedRecentVideos(
+                    freshVideos,
                     maxAgeDays,
-                    cancellationToken);
+                    includeShorts);
 
-            allVideos =
-                allVideos
-                    .Where(video => !string.IsNullOrWhiteSpace(video.Id))
-                    .Where(video => video.IsEmbeddable)
-                    .GroupBy(video => video.Id)
-                    .Select(group => group.First())
-                    .OrderByDescending(GetPublishedAtSort)
-                    .ToList();
-
-            // API enrichment fills durations when quota is available.
-            // Keep this bounded so Recent Uploads does not become slow.
-            await TryEnrichVideosAsync(
-                allVideos
-                    .Take(100)
-                    .ToList(),
-                cancellationToken);
-
-            cachedSubscribedVideos =
-                allVideos
-                    .Where(video => video.IsEmbeddable)
-                    .OrderByDescending(GetPublishedAtSort)
-                    .ToList();
-
+            // Keep subscription refresh lightweight. Duration/view enrichment is handled
+            // elsewhere for visible cards when needed, not during the RSS fan-out.
+            cachedSubscribedVideos = freshVideos;
             cachedSubscribedVideosDays = maxAgeDays;
-
-            List<VideoItem> finalVideos =
-                FilterSubscribedVideos(
-                    cachedSubscribedVideos,
-                    maxAgeDays,
-                    includeShorts)
-                .Where(video => !video.IsLive && !video.IsPremiere)
-                .OrderByDescending(GetPublishedAtSort)
-                .ToList();
-
-            // If Search quota/live scans burned the quota, videos.list may not fill
-            // duration badges. Fall back to a very small visible-only watch-page pass.
-            await EnsureVisibleSubscriptionDurationsAsync(
-                finalVideos,
-                cancellationToken);
 
             SaveCachedSubscribedVideos(
                 cachedSubscribedVideos,
                 maxAgeDays);
 
-            if (finalVideos.Count > 0)
+            if (freshVideos.Count > 0)
             {
-                yield return finalVideos;
+                string fingerprint =
+                    string.Join(
+                        "|",
+                        freshVideos
+                            .Take(24)
+                            .Select(video => video.Id));
+
+                if (yieldedFingerprints.Add(fingerprint))
+                {
+                    yield return freshVideos;
+                }
             }
+        }
+
+        private static List<VideoItem> CleanSubscribedRecentVideos(
+            IEnumerable<VideoItem> videos,
+            int maxAgeDays,
+            bool includeShorts)
+        {
+            DateTime minDate =
+                DateTime.Now.Date.AddDays(-Math.Max(1, maxAgeDays));
+
+            return videos
+                .Where(video => !string.IsNullOrWhiteSpace(video.Id))
+                .Where(video => video.IsEmbeddable)
+                .Where(video => includeShorts || !video.IsShort)
+                .Where(video => GetPublishedAtSort(video) != DateTime.MinValue)
+                .Where(video => GetPublishedAtSort(video) >= minDate)
+                .GroupBy(video => video.Id, StringComparer.OrdinalIgnoreCase)
+                .Select(group =>
+                    group
+                        .OrderByDescending(GetPublishedAtSort)
+                        .First())
+                .OrderByDescending(GetPublishedAtSort)
+                .ToList();
         }
 
         private static async Task EnsureVisibleSubscriptionDurationsAsync(
@@ -1266,25 +1246,8 @@ namespace SmoothTube.Services
             if (visibleMissingDurations.Count == 0)
                 return;
 
-            // First try the official videos.list details endpoint. This fills
-            // contentDetails.duration for the whole visible/load-more range.
+            // Official metadata enrichment only. Do not fan out to watch-page HTML here.
             await TryEnrichVideosAsync(
-                visibleMissingDurations,
-                cancellationToken);
-
-            visibleMissingDurations =
-                videos
-                    .Where(video => !video.IsLive && !video.IsPremiere)
-                    .Where(video => string.IsNullOrWhiteSpace(video.Duration))
-                    .Take(60)
-                    .ToList();
-
-            if (visibleMissingDurations.Count == 0)
-                return;
-
-            // Last-resort fallback for when API enrichment is unavailable/quota-limited.
-            // Keep it bounded to the currently loaded subscription range, not every channel.
-            await TryEnrichVideosFromWatchPagesAsync(
                 visibleMissingDurations,
                 cancellationToken);
         }
@@ -1654,10 +1617,19 @@ public async IAsyncEnumerable<List<VideoItem>> GetSubscribedBroadcastBatchesAsyn
 
             try
             {
-                string xml =
-                    await HttpClient.GetStringAsync(
+                using HttpResponseMessage response =
+                    await HttpClient.GetAsync(
                         requestUri,
+                        HttpCompletionOption.ResponseHeadersRead,
                         cancellationToken);
+
+                if (!response.IsSuccessStatusCode)
+                {
+                    return [];
+                }
+
+                string xml =
+                    await response.Content.ReadAsStringAsync(cancellationToken);
 
                 XDocument document =
                     XDocument.Parse(xml);
@@ -1708,9 +1680,8 @@ public async IAsyncEnumerable<List<VideoItem>> GetSubscribedBroadcastBatchesAsyn
                         };
                     })
                     .Where(video => !string.IsNullOrWhiteSpace(video.Id))
-                    .Where(video =>
-                        GetPublishedAtSort(video) >= minDate ||
-                        GetPublishedAtSort(video) == DateTime.MinValue)
+                    .Where(video => GetPublishedAtSort(video) >= minDate)
+                    .OrderByDescending(GetPublishedAtSort)
                     .ToList();
             }
             catch (HttpRequestException)

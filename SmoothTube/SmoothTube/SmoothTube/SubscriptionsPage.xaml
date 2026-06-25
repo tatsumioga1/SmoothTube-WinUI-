@@ -36,6 +36,7 @@
                     Toggled="Filters_Changed"/>
 
                 <Button
+                    x:Name="RefreshButton"
                     Grid.Column="2"
                     Width="40"
                     Height="40"
@@ -45,7 +46,19 @@
                     ToolTipService.ToolTip="Refresh subscriptions"
                     Click="RefreshButton_Click">
 
-                    <SymbolIcon Symbol="Refresh"/>
+                    <Grid>
+
+                        <SymbolIcon
+                            Symbol="Refresh"
+                            Visibility="{x:Bind RefreshIconVisibility, Mode=OneWay}"/>
+
+                        <ProgressRing
+                            Width="18"
+                            Height="18"
+                            IsActive="{x:Bind IsRefreshing, Mode=OneWay}"
+                            Visibility="{x:Bind RefreshProgressVisibility, Mode=OneWay}"/>
+
+                    </Grid>
 
                 </Button>
 
