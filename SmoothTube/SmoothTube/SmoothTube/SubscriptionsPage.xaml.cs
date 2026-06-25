@@ -137,6 +137,18 @@ namespace SmoothTube
             try
             {
                 await LoadVideosAsync(true);
+
+                if (SubscriptionsPivot.SelectedIndex > 0)
+                {
+                    cachedBroadcastQuotaExhausted = false;
+                    cachedBroadcastsLoaded = false;
+                    broadcastsLoaded = false;
+                    CachedBroadcasts.Clear();
+                    loadedBroadcasts.Clear();
+
+                    await LoadBroadcastsAsync(
+                        loadCancellation?.Token ?? CancellationToken.None);
+                }
             }
             finally
             {
@@ -391,8 +403,34 @@ namespace SmoothTube
 
         private async Task LoadBroadcastsAsync(CancellationToken cancellationToken)
         {
-            if (broadcastsLoading || broadcastsLoaded)
+            if (broadcastsLoading)
                 return;
+
+            // The live/premiere scan uses YouTube Search API. If yesterday's quota state
+            // was saved in the page cache, let a fresh app/session retry once the service
+            // no longer reports quota exhaustion.
+            if (cachedBroadcastQuotaExhausted && !ServiceLocator.YouTube.IsSearchQuotaExhausted)
+            {
+                cachedBroadcastQuotaExhausted = false;
+                cachedBroadcastsLoaded = false;
+                broadcastsLoaded = false;
+                CachedBroadcasts.Clear();
+                loadedBroadcasts.Clear();
+                SaveBroadcastsToPageCache(false);
+            }
+
+            ApplyVisibleFilters(true);
+
+            if (broadcastsLoaded && loadedBroadcasts.Count > 0)
+                return;
+
+            if (broadcastsLoaded && loadedBroadcasts.Count == 0)
+            {
+                // Previous scan finished empty. Allow the Livestreams/Premieres tabs to
+                // retry after quota reset or a new session instead of staying blank forever.
+                broadcastsLoaded = false;
+                cachedBroadcastsLoaded = false;
+            }
 
             if (cachedBroadcastQuotaExhausted)
             {
@@ -405,13 +443,15 @@ namespace SmoothTube
                 return;
             }
 
-            if (CachedBroadcasts.Count > 0 || cachedBroadcastsLoaded)
+            if (CachedBroadcasts.Count > 0)
             {
                 loadedBroadcasts.Clear();
                 loadedBroadcasts.AddRange(CachedBroadcasts);
                 broadcastsLoaded = cachedBroadcastsLoaded;
                 ApplyVisibleFilters();
-                return;
+
+                if (loadedBroadcasts.Count > 0 || cachedBroadcastsLoaded)
+                    return;
             }
 
             broadcastsLoading = true;
@@ -449,6 +489,15 @@ namespace SmoothTube
                 cachedBroadcastQuotaExhausted = false;
                 SaveBroadcastsToPageCache(true);
                 ApplyVisibleFilters();
+
+                if (loadedBroadcasts.Count == 0)
+                {
+                    StatusText =
+                        "No active livestreams or upcoming premieres were found right now. " +
+                        FormatStatusText(false);
+
+                    Bindings.Update();
+                }
             }
             catch (TaskCanceledException)
             {
@@ -476,6 +525,10 @@ namespace SmoothTube
             if (!isLoaded || SubscriptionsPivot.SelectedIndex == 0)
                 return;
 
+            // First surface anything RSS already clearly marked as live/premiere,
+            // then run the heavier Search API scan only for these tabs.
+            ApplyVisibleFilters(true);
+
             await LoadBroadcastsAsync(
                 loadCancellation?.Token ?? CancellationToken.None);
         }
@@ -493,14 +546,24 @@ namespace SmoothTube
 
         private void ApplyVisibleFilters(bool stillLoading = false)
         {
+            MarkLikelyBroadcastsFromRss(loadedUploads);
+            MarkLikelyBroadcastsFromRss(loadedBroadcasts);
+
             List<VideoItem> visibleVideos =
                 loadedUploads
                     .Concat(loadedBroadcasts)
                     .Where(video => IsWithinRecentWindow(video, loadedUploadDays))
                     .Where(video => IncludeShortsSwitch.IsOn || !IsLikelyShort(video))
-                    .GroupBy(video => video.Id)
-                    .Select(group => group.First())
-                    .OrderByDescending(GetPublishedAtSort)
+                    .GroupBy(video => video.Id, StringComparer.OrdinalIgnoreCase)
+                    .Select(group =>
+                        group
+                            .OrderByDescending(video => video.IsLive)
+                            .ThenByDescending(video => video.IsPremiere)
+                            .ThenByDescending(GetPublishedAtSort)
+                            .First())
+                    .OrderByDescending(video => video.IsLive)
+                    .ThenBy(video => video.IsPremiere)
+                    .ThenByDescending(GetPublishedAtSort)
                     .ToList();
 
             Videos.Clear();
@@ -532,6 +595,61 @@ namespace SmoothTube
                     : FormatStatusText(stillLoading);
 
             Bindings.Update();
+        }
+
+        private static void MarkLikelyBroadcastsFromRss(List<VideoItem> videos)
+        {
+            foreach (VideoItem video in videos)
+            {
+                if (LooksLikePremiere(video))
+                {
+                    video.IsPremiere = true;
+                    video.IsLive = false;
+
+                    if (string.IsNullOrWhiteSpace(video.Duration))
+                    {
+                        video.Duration = "Premiere";
+                    }
+                }
+                else if (LooksLikeLive(video))
+                {
+                    video.IsLive = true;
+                    video.IsPremiere = false;
+
+                    if (string.IsNullOrWhiteSpace(video.Duration))
+                    {
+                        video.Duration = "LIVE";
+                    }
+                }
+            }
+        }
+
+        private static bool LooksLikeLive(VideoItem video)
+        {
+            string title = video.Title ?? "";
+            string duration = video.Duration ?? "";
+
+            return video.IsLive ||
+                duration.Equals("LIVE", StringComparison.OrdinalIgnoreCase) ||
+                title.Contains("[ live ]", StringComparison.OrdinalIgnoreCase) ||
+                title.Contains("[live]", StringComparison.OrdinalIgnoreCase) ||
+                title.Contains("🔴", StringComparison.OrdinalIgnoreCase) ||
+                title.Contains("livestream", StringComparison.OrdinalIgnoreCase) ||
+                title.Contains("live stream", StringComparison.OrdinalIgnoreCase) ||
+                title.StartsWith("live ", StringComparison.OrdinalIgnoreCase) ||
+                title.Contains(" live now", StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static bool LooksLikePremiere(VideoItem video)
+        {
+            string title = video.Title ?? "";
+            string duration = video.Duration ?? "";
+
+            return video.IsPremiere ||
+                duration.Equals("Premiere", StringComparison.OrdinalIgnoreCase) ||
+                title.Contains("[ premiere ]", StringComparison.OrdinalIgnoreCase) ||
+                title.Contains("[premiere]", StringComparison.OrdinalIgnoreCase) ||
+                title.Contains("premiere", StringComparison.OrdinalIgnoreCase);
         }
 
         private bool TryLoadFromPageCache()

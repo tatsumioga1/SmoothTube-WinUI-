@@ -58,6 +58,7 @@ namespace SmoothTube
         private DispatcherTimer? progressTimer;
         private bool isStoppingPlayback;
         private bool playerLoadedForLiveMode;
+        private bool liveChatSignInButtonDismissed;
         private DateTimeOffset? playbackStartedAt;
         private double playbackStartedResumeSeconds;
 
@@ -76,6 +77,7 @@ namespace SmoothTube
                 true);
 
             PlayerWebView.NavigationCompleted += PlayerWebView_NavigationCompleted;
+            LiveChatWebView.NavigationCompleted += LiveChatWebView_NavigationCompleted;
             Unloaded += VideoPage_Unloaded;
 
             Loaded += VideoPage_Loaded;
@@ -158,6 +160,7 @@ namespace SmoothTube
             if (e.Parameter is VideoNavigationData data)
             {
                 CurrentVideo = data.CurrentVideo;
+                liveChatSignInButtonDismissed = false;
                 EnsureCurrentVideoDefaults();
                 ResetChannelPresentation();
                 UpdateVideoMetaText();
@@ -2874,6 +2877,15 @@ namespace SmoothTube
             {
                 LiveChatMessagesScrollViewer.Visibility = Visibility.Collapsed;
                 LiveChatWebViewFrame.Visibility = Visibility.Visible;
+
+                if (LiveChatSignInButton != null)
+                {
+                    LiveChatSignInButton.Visibility =
+                        liveChatSignInButtonDismissed
+                            ? Visibility.Collapsed
+                            : Visibility.Visible;
+                }
+
                 UpdateLiveChatFrameSize();
 
                 await LiveChatWebView.EnsureCoreWebView2Async();
@@ -2893,6 +2905,8 @@ namespace SmoothTube
                 {
                     UpdatePlayerSize();
                     UpdateLiveChatFrameSize();
+                    _ = ApplyLiveChatCompactLayoutAsync();
+                    _ = UpdateLiveChatSignInButtonVisibilityAsync();
                 });
             }
             catch (Exception ex) when (ex is InvalidOperationException ||
@@ -2915,6 +2929,199 @@ namespace SmoothTube
             if (LiveChatMessagesScrollViewer != null)
             {
                 LiveChatMessagesScrollViewer.Visibility = Visibility.Visible;
+            }
+
+            if (LiveChatSignInButton != null)
+            {
+                LiveChatSignInButton.Visibility = Visibility.Collapsed;
+            }
+        }
+
+        private async void LiveChatSignInButton_Click(
+            object sender,
+            RoutedEventArgs e)
+        {
+            liveChatSignInButtonDismissed = true;
+
+            if (LiveChatSignInButton != null)
+            {
+                LiveChatSignInButton.Visibility = Visibility.Collapsed;
+            }
+
+            if (LiveChatWebView?.CoreWebView2 == null ||
+                string.IsNullOrWhiteSpace(CurrentVideo.Id))
+            {
+                return;
+            }
+
+            try
+            {
+                string clicked =
+                    await LiveChatWebView.CoreWebView2.ExecuteScriptAsync(
+                        "(() => {" +
+                        "  const hasText = (node, text) => ((node?.innerText || node?.textContent || '').toLowerCase().includes(text));" +
+                        "  const els = Array.from(document.querySelectorAll('a[href*=\\\"ServiceLogin\\\"],a[href*=\\\"accounts.google.com\\\"],button,yt-button-renderer,ytd-button-renderer,tp-yt-paper-button,.yt-spec-button-shape-next'));" +
+                        "  const el = els.find(x => { const href = x.href || x.querySelector?.('a')?.href || ''; return href.includes('ServiceLogin') || href.includes('accounts.google.com') || hasText(x, 'sign in') || hasText(x, 'signin'); });" +
+                        "  const target = el?.querySelector?.('a,button,tp-yt-paper-button') || el;" +
+                        "  if (target) { target.click(); return true; }" +
+                        "  return false;" +
+                        "})()");
+
+                if (clicked.Contains("true", StringComparison.OrdinalIgnoreCase))
+                {
+                    return;
+                }
+            }
+            catch (Exception ex) when (ex is InvalidOperationException ||
+                ex is COMException)
+            {
+            }
+
+            string continueUrl =
+                Uri.EscapeDataString(
+                    $"https://www.youtube.com/live_chat?is_popout=1&v={Uri.EscapeDataString(CurrentVideo.Id)}");
+
+            LiveChatWebView.CoreWebView2.Navigate(
+                $"https://accounts.google.com/ServiceLogin?continue={continueUrl}");
+        }
+
+        private async void LiveChatWebView_NavigationCompleted(
+            WebView2 sender,
+            CoreWebView2NavigationCompletedEventArgs args)
+        {
+            await ApplyLiveChatCompactLayoutAsync();
+            await UpdateLiveChatSignInButtonVisibilityAsync();
+        }
+
+        private async Task ApplyLiveChatCompactLayoutAsync()
+        {
+            if (LiveChatWebView?.CoreWebView2 == null)
+            {
+                return;
+            }
+
+            try
+            {
+                // YouTube live chat sometimes reserves a tall, empty top header/ticker area
+                // in the popout iframe. Keep messages/input intact, but collapse obvious
+                // empty header/banner/ticker containers so the chat starts near the top.
+                await Task.Delay(900);
+
+                await LiveChatWebView.CoreWebView2.ExecuteScriptAsync(
+                    "(() => {" +
+                    "  const styleId = 'smoothtube-live-chat-compact-style';" +
+                    "  let style = document.getElementById(styleId);" +
+                    "  if (!style) {" +
+                    "    style = document.createElement('style');" +
+                    "    style.id = styleId;" +
+                    "    style.textContent = `" +
+                    "      yt-live-chat-header-renderer," +
+                    "      yt-live-chat-ticker-renderer," +
+                    "      yt-live-chat-banner-manager," +
+                    "      yt-live-chat-banner-renderer," +
+                    "      yt-live-chat-viewer-engagement-message-renderer," +
+                    "      #header," +
+                    "      #ticker," +
+                    "      #banner," +
+                    "      #separator," +
+                    "      #chat-messages > yt-live-chat-banner-manager {" +
+                    "        display: none !important;" +
+                    "        height: 0 !important;" +
+                    "        min-height: 0 !important;" +
+                    "        max-height: 0 !important;" +
+                    "        margin: 0 !important;" +
+                    "        padding: 0 !important;" +
+                    "        overflow: hidden !important;" +
+                    "      }" +
+                    "      yt-live-chat-item-list-renderer," +
+                    "      #items," +
+                    "      #item-scroller {" +
+                    "        margin-top: 0 !important;" +
+                    "        padding-top: 0 !important;" +
+                    "      }" +
+                    "      yt-live-chat-message-input-renderer," +
+                    "      yt-live-chat-text-input-field-renderer," +
+                    "      #input-panel," +
+                    "      #input {" +
+                    "        display: block !important;" +
+                    "        visibility: visible !important;" +
+                    "        height: auto !important;" +
+                    "        min-height: unset !important;" +
+                    "        max-height: none !important;" +
+                    "        opacity: 1 !important;" +
+                    "      }" +
+                    "    `;" +
+                    "    document.documentElement.appendChild(style);" +
+                    "  }" +
+                    "  const maybeEmptyNodes = Array.from(document.querySelectorAll('yt-live-chat-header-renderer,#header,#ticker,#banner'));" +
+                    "  for (const node of maybeEmptyNodes) {" +
+                    "    const text = (node.innerText || node.textContent || '').trim();" +
+                    "    if (!text || text.length < 12) {" +
+                    "      node.style.display = 'none';" +
+                    "      node.style.height = '0px';" +
+                    "      node.style.minHeight = '0px';" +
+                    "      node.style.margin = '0';" +
+                    "      node.style.padding = '0';" +
+                    "      node.style.overflow = 'hidden';" +
+                    "    }" +
+                    "  }" +
+                    "})()");
+            }
+            catch (Exception ex) when (ex is InvalidOperationException ||
+                ex is COMException)
+            {
+                // Ignore compact-layout injection failures; YouTube chat should still work.
+            }
+        }
+
+        private async Task UpdateLiveChatSignInButtonVisibilityAsync()
+        {
+            if (LiveChatSignInButton == null ||
+                LiveChatWebView?.CoreWebView2 == null)
+            {
+                return;
+            }
+
+            if (liveChatSignInButtonDismissed)
+            {
+                LiveChatSignInButton.Visibility = Visibility.Collapsed;
+                return;
+            }
+
+            try
+            {
+                // Give YouTube's live chat app a moment to hydrate after navigation.
+                await Task.Delay(1200);
+
+                string result =
+                    await LiveChatWebView.CoreWebView2.ExecuteScriptAsync(
+                        "(() => {" +
+                        "  const text = (document.body?.innerText || '').toLowerCase();" +
+                        "  const hasInput = !!document.querySelector('yt-live-chat-text-input-field-renderer, #input, textarea, div[contenteditable=\\\"true\\\"]');" +
+                        "  const signedInText = text.includes('say something') || text.includes('chat publicly') || text.includes('send a message');" +
+                        "  const signInText = text.includes('sign in to chat') || text.includes('sign in');" +
+                        "  if (hasInput || signedInText) return 'signed-in';" +
+                        "  if (signInText) return 'signed-out';" +
+                        "  return 'unknown';" +
+                        "})()");
+
+                if (result.Contains("signed-in", StringComparison.OrdinalIgnoreCase))
+                {
+                    liveChatSignInButtonDismissed = true;
+                    LiveChatSignInButton.Visibility = Visibility.Collapsed;
+                }
+                else
+                {
+                    LiveChatSignInButton.Visibility = Visibility.Visible;
+                }
+            }
+            catch (Exception ex) when (ex is InvalidOperationException ||
+                ex is COMException)
+            {
+                if (liveChatSignInButtonDismissed)
+                {
+                    LiveChatSignInButton.Visibility = Visibility.Collapsed;
+                }
             }
         }
 

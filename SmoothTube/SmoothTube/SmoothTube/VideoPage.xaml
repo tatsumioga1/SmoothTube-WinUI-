@@ -542,10 +542,25 @@
                             Background="#111111"
                             Visibility="Collapsed">
 
-                            <WebView2
-                                x:Name="LiveChatWebView"
-                                HorizontalAlignment="Stretch"
-                                VerticalAlignment="Stretch"/>
+                            <Grid>
+
+                                <WebView2
+                                    x:Name="LiveChatWebView"
+                                    HorizontalAlignment="Stretch"
+                                    VerticalAlignment="Stretch"/>
+
+                                <Button
+                                    x:Name="LiveChatSignInButton"
+                                    Content="Sign in to chat"
+                                    MinHeight="34"
+                                    Padding="14,0"
+                                    Margin="12,12,12,40"
+                                    HorizontalAlignment="Center"
+                                    VerticalAlignment="Bottom"
+                                    Visibility="Visible"
+                                    Click="LiveChatSignInButton_Click"/>
+
+                            </Grid>
 
                     </Border>
 
