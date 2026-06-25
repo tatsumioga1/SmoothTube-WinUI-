@@ -1,6 +1,7 @@
 using System;
 using System.IO;
 using System.Text.Json;
+using System.Text.Json.Serialization.Metadata;
 using Windows.Storage;
 
 namespace SmoothTube.Services
@@ -12,7 +13,8 @@ namespace SmoothTube.Services
         private static readonly JsonSerializerOptions JsonOptions = new()
         {
             PropertyNameCaseInsensitive = true,
-            WriteIndented = false
+            WriteIndented = false,
+            TypeInfoResolver = new DefaultJsonTypeInfoResolver()
         };
 
         public static T? Load<T>(string fileName)

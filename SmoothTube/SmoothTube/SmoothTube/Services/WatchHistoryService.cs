@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Text.Json;
+using System.Text.Json.Serialization.Metadata;
 using System.Text.RegularExpressions;
 using Windows.Storage;
 
@@ -18,7 +19,8 @@ namespace SmoothTube.Services
         private static readonly JsonSerializerOptions JsonOptions = new()
         {
             PropertyNameCaseInsensitive = true,
-            WriteIndented = false
+            WriteIndented = false,
+            TypeInfoResolver = new DefaultJsonTypeInfoResolver()
         };
 
         public static void RecordStarted(VideoItem video)
@@ -51,8 +53,7 @@ namespace SmoothTube.Services
             if (video == null ||
                 string.IsNullOrWhiteSpace(video.Id) ||
                 video.IsLive ||
-                video.IsPremiere ||
-                LooksLikeLiveVideo(video))
+                video.IsPremiere)
             {
                 return;
             }
@@ -85,16 +86,6 @@ namespace SmoothTube.Services
                 durationSeconds > 0
                     ? Math.Clamp(currentSeconds / durationSeconds * 100, 0, 100)
                     : ResolveFallbackProgress(currentSeconds, video.Progress, existing?.Progress ?? 0);
-
-            // Keep the visible continue-watching bar stable. WebView2 sometimes sends
-            // a slightly older timestamp after our forced snapshot/fallback save.
-            if ((existing?.Progress ?? 0) > 0 && progress > 0)
-            {
-                progress = Math.Max(progress, existing?.Progress ?? 0);
-            }
-
-            System.Diagnostics.Debug.WriteLine(
-                $"SmoothTube history save | Video: {video.Id} | Current: {currentSeconds} | Duration: {durationSeconds} | Progress: {progress}");
 
             video.ResumeSeconds = Math.Max(0, currentSeconds);
             video.DurationSeconds = Math.Max(video.DurationSeconds, durationSeconds);
@@ -213,15 +204,7 @@ namespace SmoothTube.Services
                 List<VideoItem> videos =
                     JsonSerializer.Deserialize<List<VideoItem>>(rawValue, JsonOptions) ?? [];
 
-                List<VideoItem> normalizedVideos = NormalizeHistory(videos);
-
-                foreach (VideoItem video in normalizedVideos.Take(12))
-                {
-                    System.Diagnostics.Debug.WriteLine(
-                        $"SmoothTube home history item | Video: {video.Id} | IsLive: {video.IsLive} | IsPremiere: {video.IsPremiere} | Progress: {video.Progress} | Resume: {video.ResumeSeconds} | DurationSeconds: {video.DurationSeconds} | Title: {video.Title}");
-                }
-
-                return normalizedVideos;
+                return NormalizeHistory(videos);
             }
             catch
             {
@@ -258,22 +241,6 @@ namespace SmoothTube.Services
             Save(NormalizeHistory(videos));
         }
 
-        private static bool LooksLikeLiveVideo(VideoItem? video)
-        {
-            string title = video?.Title ?? "";
-            string duration = video?.Duration ?? "";
-
-            return video?.IsLive == true ||
-                title.Contains("[ live ]", StringComparison.OrdinalIgnoreCase) ||
-                title.Contains("[live]", StringComparison.OrdinalIgnoreCase) ||
-                title.StartsWith("live ", StringComparison.OrdinalIgnoreCase) ||
-                title.Contains(" live ", StringComparison.OrdinalIgnoreCase) ||
-                title.Contains("livestream", StringComparison.OrdinalIgnoreCase) ||
-                title.Contains("live stream", StringComparison.OrdinalIgnoreCase) ||
-                title.Contains("🔴", StringComparison.OrdinalIgnoreCase) ||
-                duration.Equals("LIVE", StringComparison.OrdinalIgnoreCase);
-        }
-
         private static VideoItem CreateHistoryItem(
             VideoItem source,
             VideoItem? existing = null)
@@ -297,36 +264,13 @@ namespace SmoothTube.Services
                         ? Math.Clamp(resumeSeconds / durationSeconds * 100, 0, 100)
                         : existing?.Progress ?? 0;
 
-            string durationText =
-                !string.IsNullOrWhiteSpace(source.Duration)
-                    ? source.Duration
-                    : !string.IsNullOrWhiteSpace(existing?.Duration)
-                        ? existing?.Duration ?? ""
-                        : FormatDurationFromSeconds(durationSeconds);
-
-            bool isLive =
-                LooksLikeLiveVideo(source) ||
-                LooksLikeLiveVideo(existing);
-
-            bool isPremiere =
-                !isLive &&
-                (source.IsPremiere || existing?.IsPremiere == true);
-
-            if (isLive)
-            {
-                durationText = "LIVE";
-                resumeSeconds = 0;
-                durationSeconds = 0;
-                progress = 0;
-            }
-
             return new VideoItem
             {
                 Id = source.Id,
                 Title = string.IsNullOrWhiteSpace(source.Title) ? existing?.Title ?? "" : source.Title,
                 Channel = string.IsNullOrWhiteSpace(source.Channel) ? existing?.Channel ?? "" : source.Channel,
                 Views = string.IsNullOrWhiteSpace(source.Views) ? existing?.Views ?? "" : source.Views,
-                Duration = durationText,
+                Duration = string.IsNullOrWhiteSpace(source.Duration) ? existing?.Duration ?? "" : source.Duration,
                 PublishedAt = string.IsNullOrWhiteSpace(source.PublishedAt) ? existing?.PublishedAt ?? "" : source.PublishedAt,
                 PublishedAtSort = source.PublishedAtSort ?? existing?.PublishedAtSort,
                 Thumbnail = NormalizeVideoThumbnailUrl(
@@ -336,10 +280,9 @@ namespace SmoothTube.Services
                 Category = string.IsNullOrWhiteSpace(source.Category) ? existing?.Category ?? "YouTube" : source.Category,
                 ChannelId = string.IsNullOrWhiteSpace(source.ChannelId) ? existing?.ChannelId ?? "" : source.ChannelId,
                 IsEmbeddable = source.IsEmbeddable || existing?.IsEmbeddable == true,
-                IsLive = isLive,
-                IsPremiere = isPremiere,
+                IsLive = source.IsLive,
+                IsPremiere = source.IsPremiere,
                 IsShort = source.IsShort || existing?.IsShort == true,
-                LiveChatId = string.IsNullOrWhiteSpace(source.LiveChatId) ? existing?.LiveChatId ?? "" : source.LiveChatId,
                 Progress = NormalizeProgress(progress),
                 ResumeSeconds = Math.Max(0, resumeSeconds),
                 DurationSeconds = Math.Max(0, durationSeconds),
@@ -381,28 +324,10 @@ namespace SmoothTube.Services
                             0);
                     }
 
-                    if (string.IsNullOrWhiteSpace(video.Duration) &&
-                        video.DurationSeconds > 0)
-                    {
-                        video.Duration =
-                            FormatDurationFromSeconds(video.DurationSeconds);
-                    }
-
-                    if (LooksLikeLiveVideo(video))
-                    {
-                        video.IsLive = true;
-                        video.IsPremiere = false;
-
-                        if (string.IsNullOrWhiteSpace(video.Duration))
-                        {
-                            video.Duration = "LIVE";
-                        }
-                    }
-
                     video.Progress = NormalizeProgress(video.Progress);
                     return video;
                 })
-                .Where(video => video.IsLive || video.IsPremiere || video.Progress < CompletedProgressThreshold)
+                .Where(video => video.Progress < CompletedProgressThreshold)
                 .OrderByDescending(video => video.LastWatchedAt ?? DateTimeOffset.MinValue)
                 .Take(MaxContinueWatchingItems)
                 .ToList();
@@ -480,11 +405,10 @@ namespace SmoothTube.Services
             }
 
             // If the player gives us a real resume timestamp but does not expose
-            // duration, still show a visible real progress bar instead of hiding it.
-            // Use a conservative 10-minute estimate only for the bar; ResumeSeconds
-            // remains the source of truth for resuming.
+            // duration, still show a small real progress bar instead of hiding it.
+            // The actual resume point is saved separately in ResumeSeconds.
             return currentSeconds >= 5
-                ? Math.Clamp(currentSeconds / 600 * 100, 1, 80)
+                ? 1
                 : 0;
         }
 
@@ -518,25 +442,6 @@ namespace SmoothTube.Services
             }
 
             return totalSeconds;
-        }
-
-        private static string FormatDurationFromSeconds(double seconds)
-        {
-            if (double.IsNaN(seconds) ||
-                double.IsInfinity(seconds) ||
-                seconds <= 0)
-            {
-                return "";
-            }
-
-            int totalSeconds = Math.Max(0, (int)Math.Round(seconds));
-            int hours = totalSeconds / 3600;
-            int minutes = (totalSeconds % 3600) / 60;
-            int remainingSeconds = totalSeconds % 60;
-
-            return hours > 0
-                ? $"{hours}:{minutes:00}:{remainingSeconds:00}"
-                : $"{minutes}:{remainingSeconds:00}";
         }
 
         private static double NormalizeProgress(double progress)

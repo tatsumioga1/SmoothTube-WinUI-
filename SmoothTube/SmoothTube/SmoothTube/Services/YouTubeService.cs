@@ -7,6 +7,7 @@ using System.Net;
 using System.Net.Http;
 using System.IO;
 using System.Text.Json;
+using System.Text.Json.Serialization.Metadata;
 using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
@@ -39,7 +40,8 @@ namespace SmoothTube.Services
 
         private static readonly JsonSerializerOptions JsonOptions = new()
         {
-            PropertyNameCaseInsensitive = true
+            PropertyNameCaseInsensitive = true,
+            TypeInfoResolver = new DefaultJsonTypeInfoResolver()
         };
 
         static YouTubeService()
@@ -624,7 +626,7 @@ namespace SmoothTube.Services
 
             using StringContent content =
                 new(
-                    JsonSerializer.Serialize(payload),
+                    JsonSerializer.Serialize(payload, JsonOptions),
                     System.Text.Encoding.UTF8,
                     "application/json");
 
@@ -3278,7 +3280,7 @@ namespace SmoothTube.Services
 
                 File.WriteAllText(
                     filePath,
-                    JsonSerializer.Serialize(cache));
+                    JsonSerializer.Serialize(cache, JsonOptions));
             }
             catch (Exception ex) when (ex is IOException ||
                 ex is UnauthorizedAccessException)
