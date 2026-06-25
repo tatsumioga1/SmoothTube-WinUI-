@@ -7,6 +7,8 @@ namespace SmoothTube.Services
 {
     public interface IYouTubeService
     {
+        bool IsSearchQuotaExhausted { get; }
+
         Task<List<VideoItem>> GetHomeVideosAsync(CancellationToken cancellationToken = default);
 
         Task<List<VideoItem>> GetMoreHomeVideosAsync(
@@ -59,6 +61,13 @@ namespace SmoothTube.Services
         Task<List<ChannelItem>> GetSubscriptionsAsync(
             CancellationToken cancellationToken = default);
 
+        Task<List<PlaylistItem>> GetPlaylistsAsync(
+            CancellationToken cancellationToken = default);
+
+        Task<List<VideoItem>> GetPlaylistVideosAsync(
+            string playlistId,
+            CancellationToken cancellationToken = default);
+
         Task<List<VideoItem>> GetSubscribedVideosAsync(
             int maxAgeDays = 30,
             bool includeShorts = true,
@@ -70,13 +79,10 @@ namespace SmoothTube.Services
             CancellationToken cancellationToken = default);
 
         IAsyncEnumerable<List<VideoItem>> GetSubscribedBroadcastBatchesAsync(
-            string eventType = "all",
             CancellationToken cancellationToken = default);
 
         Task<List<VideoItem>> GetSubscribedBroadcastsAsync(
             CancellationToken cancellationToken = default);
-
-        bool IsSearchQuotaExhausted { get; }
 
         void ClearSubscribedVideoCache();
 

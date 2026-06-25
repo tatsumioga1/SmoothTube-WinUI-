@@ -1107,6 +1107,200 @@ namespace SmoothTube.Services
             }
         }
 
+        public async Task<List<PlaylistItem>> GetPlaylistsAsync(
+            CancellationToken cancellationToken = default)
+        {
+            if (!ServiceLocator.GoogleOAuth.IsSignedIn)
+                return [];
+
+            List<PlaylistItem> playlists = [];
+            string? nextPageToken = null;
+
+            try
+            {
+                do
+                {
+                    string requestUri =
+                        "https://www.googleapis.com/youtube/v3/playlists" +
+                        "?part=snippet,contentDetails,status" +
+                        "&mine=true" +
+                        "&maxResults=50";
+
+                    if (!string.IsNullOrWhiteSpace(nextPageToken))
+                    {
+                        requestUri +=
+                            $"&pageToken={Uri.EscapeDataString(nextPageToken)}";
+                    }
+
+                    using HttpResponseMessage response =
+                        await SendYouTubeGetAsync(
+                            requestUri,
+                            cancellationToken);
+
+                    if (!response.IsSuccessStatusCode)
+                        break;
+
+                    await using var contentStream =
+                        await response.Content.ReadAsStreamAsync(cancellationToken);
+
+                    YouTubePlaylistsResponse? playlistResponse =
+                        await JsonSerializer.DeserializeAsync<YouTubePlaylistsResponse>(
+                            contentStream,
+                            JsonOptions,
+                            cancellationToken);
+
+                    playlists.AddRange(
+                        playlistResponse?.Items?
+                            .Where(item => !string.IsNullOrWhiteSpace(item.Id))
+                            .Select(item => new PlaylistItem
+                            {
+                                Id = item.Id ?? "",
+                                Title = Decode(item.Snippet?.Title),
+                                Description = Decode(item.Snippet?.Description),
+                                Thumbnail =
+                                    item.Snippet?.Thumbnails?.Maxres?.Url ??
+                                    item.Snippet?.Thumbnails?.Standard?.Url ??
+                                    item.Snippet?.Thumbnails?.High?.Url ??
+                                    item.Snippet?.Thumbnails?.Medium?.Url ??
+                                    item.Snippet?.Thumbnails?.Default?.Url ??
+                                    "",
+                                VideoCount = item.ContentDetails?.ItemCount ?? 0,
+                                PrivacyStatus = item.Status?.PrivacyStatus ?? ""
+                            })
+                            .ToList() ?? []);
+
+                    nextPageToken = playlistResponse?.NextPageToken;
+                }
+                while (!string.IsNullOrWhiteSpace(nextPageToken));
+            }
+            catch (Exception ex) when (ex is HttpRequestException ||
+                ex is JsonException ||
+                ex is TaskCanceledException)
+            {
+            }
+
+            return playlists
+                .Where(playlist => !string.IsNullOrWhiteSpace(playlist.Id))
+                .GroupBy(playlist => playlist.Id, StringComparer.OrdinalIgnoreCase)
+                .Select(group => group.First())
+                .OrderBy(playlist => playlist.Title)
+                .ToList();
+        }
+
+        public async Task<List<VideoItem>> GetPlaylistVideosAsync(
+            string playlistId,
+            CancellationToken cancellationToken = default)
+        {
+            if (string.IsNullOrWhiteSpace(playlistId) ||
+                !ServiceLocator.GoogleOAuth.IsSignedIn)
+            {
+                return [];
+            }
+
+            List<VideoItem> videos = [];
+            string? nextPageToken = null;
+
+            try
+            {
+                do
+                {
+                    string requestUri =
+                        "https://www.googleapis.com/youtube/v3/playlistItems" +
+                        "?part=snippet,contentDetails" +
+                        "&maxResults=50" +
+                        $"&playlistId={Uri.EscapeDataString(playlistId)}";
+
+                    if (!string.IsNullOrWhiteSpace(nextPageToken))
+                    {
+                        requestUri +=
+                            $"&pageToken={Uri.EscapeDataString(nextPageToken)}";
+                    }
+
+                    using HttpResponseMessage response =
+                        await SendYouTubeGetAsync(
+                            requestUri,
+                            cancellationToken);
+
+                    if (!response.IsSuccessStatusCode)
+                        break;
+
+                    await using var contentStream =
+                        await response.Content.ReadAsStreamAsync(cancellationToken);
+
+                    YouTubePlaylistItemsResponse? playlistResponse =
+                        await JsonSerializer.DeserializeAsync<YouTubePlaylistItemsResponse>(
+                            contentStream,
+                            JsonOptions,
+                            cancellationToken);
+
+                    videos.AddRange(
+                        playlistResponse?.Items?
+                            .Select(item => item.Snippet)
+                            .Where(snippet => !string.IsNullOrWhiteSpace(snippet?.ResourceId?.VideoId))
+                            .Where(snippet =>
+                                !string.Equals(
+                                    snippet?.Title,
+                                    "Deleted video",
+                                    StringComparison.OrdinalIgnoreCase) &&
+                                !string.Equals(
+                                    snippet?.Title,
+                                    "Private video",
+                                    StringComparison.OrdinalIgnoreCase))
+                            .Select(snippet => new VideoItem
+                            {
+                                Id = snippet?.ResourceId?.VideoId ?? "",
+                                Title = Decode(snippet?.Title),
+                                Description = Decode(snippet?.Description),
+                                Channel = Decode(snippet?.ChannelTitle),
+                                ChannelId =
+                                    snippet?.VideoOwnerChannelId ??
+                                    snippet?.ChannelId ??
+                                    "",
+                                PublishedAt = FormatPublishedAt(snippet?.PublishedAt),
+                                PublishedAtSort = snippet?.PublishedAt,
+                                Thumbnail = GetBestVideoThumbnailUrl(
+                                    snippet?.ResourceId?.VideoId ?? "",
+                                    snippet?.Thumbnails?.Maxres?.Url ??
+                                    snippet?.Thumbnails?.Standard?.Url ??
+                                    snippet?.Thumbnails?.High?.Url ??
+                                    snippet?.Thumbnails?.Medium?.Url ??
+                                    snippet?.Thumbnails?.Default?.Url ??
+                                    ""),
+                                IsEmbeddable = true,
+                                Category = "Playlist"
+                            })
+                            .ToList() ?? []);
+
+                    nextPageToken = playlistResponse?.NextPageToken;
+                }
+                while (!string.IsNullOrWhiteSpace(nextPageToken));
+            }
+            catch (Exception ex) when (ex is HttpRequestException ||
+                ex is JsonException ||
+                ex is TaskCanceledException)
+            {
+            }
+
+            videos =
+                videos
+                    .Where(video => !string.IsNullOrWhiteSpace(video.Id))
+                    .GroupBy(video => video.Id, StringComparer.OrdinalIgnoreCase)
+                    .Select(group => group.First())
+                    .ToList();
+
+            await TryEnrichVideosAsync(
+                videos.Take(100).ToList(),
+                cancellationToken);
+
+            await TryEnrichVideosFromWatchPagesAsync(
+                videos.Take(100),
+                cancellationToken);
+
+            return videos
+                .Where(video => video.IsEmbeddable)
+                .ToList();
+        }
+
         public async Task<List<VideoItem>> GetSubscribedVideosAsync(
             int maxAgeDays = 30,
             bool includeShorts = true,
@@ -1292,7 +1486,16 @@ namespace SmoothTube.Services
         }
 
 
-public async IAsyncEnumerable<List<VideoItem>> GetSubscribedBroadcastBatchesAsync(
+        public IAsyncEnumerable<List<VideoItem>> GetSubscribedBroadcastBatchesAsync(
+            CancellationToken cancellationToken = default)
+        {
+            return GetSubscribedBroadcastBatchesAsync(
+                "all",
+                cancellationToken);
+        }
+
+
+        public async IAsyncEnumerable<List<VideoItem>> GetSubscribedBroadcastBatchesAsync(
             string eventType = "all",
             [EnumeratorCancellation] CancellationToken cancellationToken = default)
         {
@@ -3349,6 +3552,34 @@ public async IAsyncEnumerable<List<VideoItem>> GetSubscribedBroadcastBatchesAsyn
             public string? ChannelId { get; set; }
 
             public string? VideoId { get; set; }
+        }
+
+        private sealed class YouTubePlaylistsResponse
+        {
+            public List<YouTubePlaylistDetails>? Items { get; set; }
+
+            public string? NextPageToken { get; set; }
+        }
+
+        private sealed class YouTubePlaylistDetails
+        {
+            public string? Id { get; set; }
+
+            public YouTubeSnippet? Snippet { get; set; }
+
+            public YouTubePlaylistContentDetails? ContentDetails { get; set; }
+
+            public YouTubePlaylistStatus? Status { get; set; }
+        }
+
+        private sealed class YouTubePlaylistContentDetails
+        {
+            public int? ItemCount { get; set; }
+        }
+
+        private sealed class YouTubePlaylistStatus
+        {
+            public string? PrivacyStatus { get; set; }
         }
 
         private sealed class YouTubePlaylistItemsResponse
