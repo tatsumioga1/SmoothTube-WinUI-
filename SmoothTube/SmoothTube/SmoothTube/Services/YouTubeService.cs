@@ -35,7 +35,7 @@ namespace SmoothTube.Services
         public bool IsSearchQuotaExhausted => IsSearchQuotaCurrentlyExhausted();
         private static DateTimeOffset? searchQuotaExhaustedAt;
         private const string CachedSubscribedVideosFile = "subscription-videos.json";
-        private const int CachedSubscribedVideosVersion = 10;
+        private const int CachedSubscribedVideosVersion = 12;
 
         private static readonly JsonSerializerOptions JsonOptions = new()
         {
@@ -229,6 +229,44 @@ namespace SmoothTube.Services
             return string.IsNullOrWhiteSpace(video.Title)
                 ? null
                 : video;
+        }
+
+        public async Task EnrichDurationsBestEffortAsync(
+            List<VideoItem> videos,
+            CancellationToken cancellationToken = default)
+        {
+            if (videos == null || videos.Count == 0)
+                return;
+
+            List<VideoItem> missingDurations =
+                videos
+                    .Where(video => !video.IsLive && !video.IsPremiere)
+                    .Where(video => string.IsNullOrWhiteSpace(video.Duration))
+                    .Where(video => !string.IsNullOrWhiteSpace(video.Id))
+                    .GroupBy(video => video.Id, StringComparer.OrdinalIgnoreCase)
+                    .Select(group => group.First())
+                    .Take(48)
+                    .ToList();
+
+            if (missingDurations.Count == 0)
+                return;
+
+            await TryEnrichVideosAsync(
+                missingDurations,
+                cancellationToken);
+
+            List<VideoItem> stillMissing =
+                missingDurations
+                    .Where(video => string.IsNullOrWhiteSpace(video.Duration))
+                    .Take(12)
+                    .ToList();
+
+            if (stillMissing.Count > 0)
+            {
+                await TryEnrichVideosFromWatchPagesAsync(
+                    stillMissing,
+                    cancellationToken);
+            }
         }
 
         public async Task<bool> RateVideoAsync(
@@ -3050,39 +3088,17 @@ public async IAsyncEnumerable<List<VideoItem>> GetSubscribedBroadcastBatchesAsyn
             if (video.IsShort)
                 return true;
 
-            bool titleLooksShort =
-                video.Title.Contains("#short", StringComparison.OrdinalIgnoreCase) ||
-                video.Title.Contains(" shorts", StringComparison.OrdinalIgnoreCase) ||
-                video.Title.Contains(" short ", StringComparison.OrdinalIgnoreCase) ||
-                video.Title.EndsWith(" short", StringComparison.OrdinalIgnoreCase) ||
-                video.Title.Contains("ytshorts", StringComparison.OrdinalIgnoreCase);
+            string title =
+                video.Title ?? "";
 
-            if (string.IsNullOrWhiteSpace(video.Duration))
-            {
-                return titleLooksShort;
-            }
-
-            string[] parts =
-                video.Duration.Split(':');
-
-            if (parts.Length == 1 &&
-                int.TryParse(parts[0], out int secondsOnly))
-            {
-                return secondsOnly <= 180 || titleLooksShort;
-            }
-
-            if (parts.Length == 2 &&
-                int.TryParse(parts[0], out int minutes) &&
-                int.TryParse(parts[1], out int seconds))
-            {
-                int totalSeconds =
-                    minutes * 60 + seconds;
-
-                return titleLooksShort ||
-                    totalSeconds <= 180;
-            }
-
-            return titleLooksShort;
+            // Do not classify normal videos as Shorts just because they are under
+            // a certain duration. Some regular uploads, trailers, clips, music,
+            // news segments, and creator updates can be below 3 minutes.
+            return title.Contains("#short", StringComparison.OrdinalIgnoreCase) ||
+                title.Contains("#shorts", StringComparison.OrdinalIgnoreCase) ||
+                title.Contains(" shorts", StringComparison.OrdinalIgnoreCase) ||
+                title.Contains(" youtube shorts", StringComparison.OrdinalIgnoreCase) ||
+                title.Contains("ytshorts", StringComparison.OrdinalIgnoreCase);
         }
 
         private static bool LooksLikeBroadcast(VideoItem video)

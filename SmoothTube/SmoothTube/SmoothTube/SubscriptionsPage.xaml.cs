@@ -8,14 +8,18 @@ using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Globalization;
 using System.Linq;
+using System.Net.Http;
 using System.Threading;
 using System.Threading.Tasks;
+using System.Text.RegularExpressions;
 
 namespace SmoothTube
 {
     public sealed partial class SubscriptionsPage : Page
     {
-        private const string SubscriptionsCacheFileName = "subscriptions-cache.json";
+        private const string SubscriptionsCacheFileName = "subscriptions-cache-v3.json";
+
+        private static readonly HttpClient DurationHttpClient = new();
 
         private sealed class SubscriptionsCache
         {
@@ -105,6 +109,8 @@ namespace SmoothTube
             if (TryLoadFromPageCache())
             {
                 ApplyVisibleFilters();
+                _ = EnrichVisibleUploadDurationsAsync(
+                    loadCancellation?.Token ?? CancellationToken.None);
                 return;
             }
 
@@ -228,7 +234,127 @@ namespace SmoothTube
 
             SaveUploadsToPageCache();
             ApplyVisibleFilters();
+
             SetFeedLoading(false);
+            _ = EnrichVisibleUploadDurationsAsync(
+                loadCancellation?.Token ?? CancellationToken.None);
+        }
+
+        private async Task EnrichVisibleUploadDurationsAsync(
+            CancellationToken cancellationToken)
+        {
+            List<VideoItem> visibleUploads =
+                loadedUploads
+                    .Where(video => !video.IsLive && !video.IsPremiere)
+                    .Where(video => string.IsNullOrWhiteSpace(video.Duration))
+                    .Where(video => !string.IsNullOrWhiteSpace(video.Id))
+                    .OrderByDescending(GetPublishedAtSort)
+                    .Take(Math.Min(currentUploadDisplayLimit, 36))
+                    .ToList();
+
+            if (visibleUploads.Count == 0)
+                return;
+
+            using SemaphoreSlim gate = new(6);
+
+            Task[] tasks =
+                visibleUploads
+                    .Select(async video =>
+                    {
+                        await gate.WaitAsync(cancellationToken);
+
+                        try
+                        {
+                            await EnrichDurationFromWatchPageAsync(
+                                video,
+                                cancellationToken);
+                        }
+                        finally
+                        {
+                            gate.Release();
+                        }
+                    })
+                    .ToArray();
+
+            try
+            {
+                await Task.WhenAll(tasks);
+            }
+            catch (TaskCanceledException)
+            {
+                return;
+            }
+
+            SaveUploadsToPageCache();
+            ApplyVisibleFilters();
+        }
+
+        private static async Task EnrichDurationFromWatchPageAsync(
+            VideoItem video,
+            CancellationToken cancellationToken)
+        {
+            try
+            {
+                using HttpResponseMessage response =
+                    await DurationHttpClient.GetAsync(
+                        "https://www.youtube.com/watch" +
+                        $"?v={Uri.EscapeDataString(video.Id)}" +
+                        "&bpctr=9999999999&has_verified=1",
+                        cancellationToken);
+
+                if (!response.IsSuccessStatusCode)
+                    return;
+
+                string body =
+                    await response.Content.ReadAsStringAsync(cancellationToken);
+
+                string lengthSeconds =
+                    MatchValue(
+                        body,
+                        @"""lengthSeconds"":""?(?<value>\d+)""?");
+
+                if (int.TryParse(lengthSeconds, out int totalSeconds) &&
+                    totalSeconds > 0)
+                {
+                    video.Duration =
+                        FormatDuration(totalSeconds);
+                }
+            }
+            catch (Exception ex) when (ex is HttpRequestException ||
+                ex is TaskCanceledException ||
+                ex is RegexMatchTimeoutException ||
+                ex is InvalidOperationException)
+            {
+            }
+        }
+
+        private static string MatchValue(
+            string text,
+            string pattern)
+        {
+            Match match =
+                Regex.Match(
+                    text,
+                    pattern,
+                    RegexOptions.IgnoreCase,
+                    TimeSpan.FromSeconds(2));
+
+            return match.Success
+                ? match.Groups["value"].Value
+                : "";
+        }
+
+        private static string FormatDuration(int totalSeconds)
+        {
+            if (totalSeconds <= 0)
+                return "";
+
+            TimeSpan time =
+                TimeSpan.FromSeconds(totalSeconds);
+
+            return time.TotalHours >= 1
+                ? $"{(int)time.TotalHours}:{time.Minutes:D2}:{time.Seconds:D2}"
+                : $"{time.Minutes}:{time.Seconds:D2}";
         }
 
         private async Task LoadVideosAsync(bool forceRefresh)
@@ -244,7 +370,7 @@ namespace SmoothTube
                 // User explicitly requested fresh data; reset the visible window back to
                 // the newest 24 and rebuild cache from scratch.
                 ServiceLocator.YouTube.ClearSubscribedVideoCache();
-                ClearUploadsCache();
+                ClearUploadsCache(clearPersistent: true);
             }
             else if (TryLoadFromPageCache())
             {
@@ -303,7 +429,9 @@ namespace SmoothTube
 
                 SaveUploadsToPageCache();
                 ApplyVisibleFilters();
+
                 SetFeedLoading(false);
+                _ = EnrichVisibleUploadDurationsAsync(cancellationToken);
 
                 // Livestreams/premieres are intentionally not auto-loaded here.
                 // They use the expensive broadcast scan and load only when those tabs are opened.
@@ -686,8 +814,18 @@ namespace SmoothTube
             if (IncludeShortsSwitch.IsOn && CachedUploads.Count > 0 && !cachedUploadsIncludeShorts)
                 return false;
 
-            loadedUploadDays = InitialUploadLookbackDays;
-            currentUploadDisplayLimit = InitialUploadLimit;
+            loadedUploadDays =
+                cachedUploadDays > 0
+                    ? cachedUploadDays
+                    : InitialUploadLookbackDays;
+
+            currentUploadDisplayLimit =
+                Math.Clamp(
+                    cachedUploadDisplayLimit > 0
+                        ? cachedUploadDisplayLimit
+                        : Math.Min(CachedUploads.Count, InitialUploadLimit),
+                    InitialUploadLimit,
+                    Math.Max(InitialUploadLimit, CachedUploads.Count));
 
             loadedUploads.Clear();
             loadedUploads.AddRange(
@@ -857,36 +995,17 @@ namespace SmoothTube
             if (video.IsShort)
                 return true;
 
-            string title = video.Title ?? "";
+            string title =
+                video.Title ?? "";
 
-            bool titleLooksShort =
-                title.Contains("#short", StringComparison.OrdinalIgnoreCase) ||
+            // Do not hide normal short-duration videos. Duration alone is not enough
+            // to identify YouTube Shorts; it was causing regular uploads under
+            // 3 minutes to disappear from Subscriptions.
+            return title.Contains("#short", StringComparison.OrdinalIgnoreCase) ||
+                title.Contains("#shorts", StringComparison.OrdinalIgnoreCase) ||
                 title.Contains(" shorts", StringComparison.OrdinalIgnoreCase) ||
-                title.Contains(" short ", StringComparison.OrdinalIgnoreCase) ||
-                title.EndsWith(" short", StringComparison.OrdinalIgnoreCase) ||
+                title.Contains(" youtube shorts", StringComparison.OrdinalIgnoreCase) ||
                 title.Contains("ytshorts", StringComparison.OrdinalIgnoreCase);
-
-            if (string.IsNullOrWhiteSpace(video.Duration))
-                return titleLooksShort;
-
-            string[] parts = video.Duration.Split(':');
-
-            if (parts.Length == 1 &&
-                int.TryParse(parts[0], out int secondsOnly))
-            {
-                return secondsOnly <= 180 || titleLooksShort;
-            }
-
-            if (parts.Length == 2 &&
-                int.TryParse(parts[0], out int minutes) &&
-                int.TryParse(parts[1], out int seconds))
-            {
-                int totalSeconds = minutes * 60 + seconds;
-
-                return titleLooksShort || totalSeconds <= 180;
-            }
-
-            return titleLooksShort;
         }
 
         private string FormatBroadcastQuotaStatus()
