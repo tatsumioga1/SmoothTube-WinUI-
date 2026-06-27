@@ -12,6 +12,7 @@ using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Net.Http;
+using System.Numerics;
 using System.Runtime.InteropServices;
 using System.Text.Json;
 using System.Text.RegularExpressions;
@@ -19,6 +20,7 @@ using System.Threading.Tasks;
 using Microsoft.UI.Xaml.Media.Imaging;
 using Microsoft.UI;
 using Microsoft.UI.Xaml.Media;
+using Microsoft.UI.Xaml.Hosting;
 using Windows.Foundation;
 
 namespace SmoothTube
@@ -73,6 +75,8 @@ namespace SmoothTube
         public VideoPage()
         {
             InitializeComponent();
+
+            PlayerWebView.DefaultBackgroundColor = Colors.Transparent;
 
             AddHandler(
                 UIElement.KeyDownEvent,
@@ -613,10 +617,62 @@ namespace SmoothTube
             UpdateLiveChatFrameSize();
         }
 
+        private void ApplyRoundedPlayerClip(
+            double width,
+            double height,
+            double radius)
+        {
+            if (PlayerWebView == null ||
+                width <= 0 ||
+                height <= 0 ||
+                double.IsNaN(width) ||
+                double.IsNaN(height) ||
+                double.IsInfinity(width) ||
+                double.IsInfinity(height))
+            {
+                return;
+            }
+
+            try
+            {
+                Microsoft.UI.Composition.Visual webViewVisual =
+                    ElementCompositionPreview.GetElementVisual(PlayerWebView);
+
+                Microsoft.UI.Composition.Compositor compositor =
+                    webViewVisual.Compositor;
+
+                Microsoft.UI.Composition.CompositionRoundedRectangleGeometry roundedGeometry =
+                    compositor.CreateRoundedRectangleGeometry();
+
+                roundedGeometry.Size =
+                    new Vector2(
+                        (float)Math.Ceiling(width),
+                        (float)Math.Ceiling(height));
+
+                roundedGeometry.CornerRadius =
+                    new Vector2(
+                        (float)Math.Max(0, radius),
+                        (float)Math.Max(0, radius));
+
+                Microsoft.UI.Composition.CompositionGeometricClip clip =
+                    compositor.CreateGeometricClip(roundedGeometry);
+
+                webViewVisual.Clip = clip;
+            }
+            catch (Exception)
+            {
+                // Rounded clipping is visual polish only. Playback must never fail
+                // because a composition clip could not be applied.
+            }
+        }
+
         private void UpdatePlayerSize()
         {
-            if (PlayerBorder == null)
+            if (PlayerBorder == null ||
+                PlayerWebView == null)
+            {
                 return;
+            }
 
             if (isPlayerFullScreen && XamlRoot != null)
             {
@@ -624,26 +680,58 @@ namespace SmoothTube
                 PlayerBorder.Height = XamlRoot.Size.Height;
                 PlayerWebView.Width = XamlRoot.Size.Width;
                 PlayerWebView.Height = XamlRoot.Size.Height;
+                ApplyRoundedPlayerClip(
+                    XamlRoot.Size.Width,
+                    XamlRoot.Size.Height,
+                    0);
                 UpdateLiveChatFrameSize();
                 return;
             }
 
-            double availableWidth =
-                MainLayoutGrid.ActualWidth;
+            double playerWidth =
+                MainContentPanel?.ActualWidth ?? 0;
 
-            if (availableWidth <= 0)
+            if (playerWidth <= 0 && MainLayoutGrid != null)
+            {
+                double availableWidth =
+                    MainLayoutGrid.ActualWidth;
+
+                if (availableWidth > 0)
+                {
+                    playerWidth =
+                        SidebarColumn.Width.Value > 0
+                            ? availableWidth - SidebarColumn.Width.Value - MainLayoutGrid.ColumnSpacing
+                            : availableWidth;
+                }
+            }
+
+            if (playerWidth <= 0)
                 return;
 
-            double playerWidth =
-                SidebarColumn.Width.Value > 0
-                    ? availableWidth - 364
-                    : availableWidth;
-
-            PlayerBorder.Height =
+            // Normal YouTube playback should stay locked to a true 16:9 frame.
+            // Vertical/Shorts-specific layout can be handled later as a separate mode.
+            double playerHeight =
                 playerWidth * 9 / 16;
 
-            PlayerWebView.Width = double.NaN;
-            PlayerWebView.Height = double.NaN;
+            PlayerBorder.Width = playerWidth;
+            PlayerBorder.Height = playerHeight;
+
+            PlayerWebView.Width = playerWidth;
+            PlayerWebView.Height = playerHeight;
+
+            MockPlayerGrid.Width = playerWidth;
+            MockPlayerGrid.Height = playerHeight;
+
+            if (BlockedPlayerOverlay != null)
+            {
+                BlockedPlayerOverlay.Width = playerWidth;
+                BlockedPlayerOverlay.Height = playerHeight;
+            }
+
+            ApplyRoundedPlayerClip(
+                playerWidth,
+                playerHeight,
+                16);
 
             UpdateLiveChatFrameSize();
         }
@@ -746,6 +834,7 @@ namespace SmoothTube
                     Uri.EscapeDataString(CurrentVideo.Id);
 
                 await PlayerWebView.EnsureCoreWebView2Async();
+                PlayerWebView.DefaultBackgroundColor = Colors.Transparent;
                 EnsurePlayerHostMapped();
                 EnsurePlayerEventsAttached();
 
@@ -1052,10 +1141,32 @@ namespace SmoothTube
             ApplyPlayerFullScreen(sender.ContainsFullScreenElement);
         }
 
+        private async void ApplyPlayerHtmlFullScreenState(bool isFullScreen)
+        {
+            try
+            {
+                if (PlayerWebView?.CoreWebView2 == null)
+                    return;
+
+                string state =
+                    isFullScreen
+                        ? "true"
+                        : "false";
+
+                await PlayerWebView.CoreWebView2.ExecuteScriptAsync(
+                    $"document.body && document.body.classList.toggle('smooth-fullscreen', {state});");
+            }
+            catch (Exception)
+            {
+                // Fullscreen CSS syncing is visual polish only.
+            }
+        }
+
         private void ApplyPlayerFullScreen(bool isFullScreen)
         {
             isPlayerFullScreen = isFullScreen;
             MainWindow.Instance?.SetFullScreen(isFullScreen);
+            ApplyPlayerHtmlFullScreenState(isFullScreen);
 
             VideoActionsPanel.Visibility =
                 isFullScreen

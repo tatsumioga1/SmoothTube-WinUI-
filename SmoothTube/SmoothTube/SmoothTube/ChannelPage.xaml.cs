@@ -8,12 +8,21 @@ using SmoothTube.Services;
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
+using System.Globalization;
 using System.Linq;
+using System.Net.Http;
+using System.Text.Json;
+using System.Threading.Tasks;
 
 namespace SmoothTube
 {
     public sealed partial class ChannelPage : Page
     {
+        private static readonly HttpClient ChannelMetadataHttpClient = new()
+        {
+            Timeout = TimeSpan.FromSeconds(10)
+        };
+
         private const string ChannelCacheFileName = "channel-page-cache-v2.json";
 
         private sealed class ChannelPageCacheEntry
@@ -46,6 +55,10 @@ namespace SmoothTube
 
         public string StatusText { get; set; } = "";
 
+        public string ChannelSubscriberText { get; set; } = "";
+
+        public Visibility ChannelSubscriberVisibility { get; set; } = Visibility.Collapsed;
+
         public string LoadingText { get; set; } = "Loading channel...";
 
         public Visibility LoadingVisibility { get; set; } = Visibility.Collapsed;
@@ -71,6 +84,8 @@ namespace SmoothTube
                 requestedLivestreamCount = 24;
                 shortsLoaded = false;
                 livestreamsLoaded = false;
+                ChannelSubscriberText = "";
+                ChannelSubscriberVisibility = Visibility.Collapsed;
                 allVideos.Clear();
                 UploadVideos.Clear();
                 ShortVideos.Clear();
@@ -85,6 +100,23 @@ namespace SmoothTube
         public ChannelPage()
         {
             InitializeComponent();
+
+            Loaded += ChannelPage_Loaded;
+            SizeChanged += ChannelPage_SizeChanged;
+        }
+
+        private void ChannelPage_Loaded(
+            object sender,
+            RoutedEventArgs e)
+        {
+            UpdateChannelBannerSize();
+        }
+
+        private void ChannelPage_SizeChanged(
+            object sender,
+            SizeChangedEventArgs e)
+        {
+            UpdateChannelBannerSize();
         }
 
         private async System.Threading.Tasks.Task LoadChannelAsync(bool forceRefresh)
@@ -111,6 +143,8 @@ namespace SmoothTube
                     Bindings.Update();
                     UpdateBannerVisibility();
                 }
+
+                await LoadChannelSubscriberTextAsync();
 
                 bool isSubscribed =
                     await UpdateSubscriptionButtonAsync();
@@ -350,6 +384,110 @@ namespace SmoothTube
             Bindings.Update();
         }
 
+        private async System.Threading.Tasks.Task LoadChannelSubscriberTextAsync()
+        {
+            if (string.IsNullOrWhiteSpace(Channel.Id) ||
+                string.IsNullOrWhiteSpace(AppSettings.YouTubeApiKey))
+            {
+                ChannelSubscriberText = "";
+                ChannelSubscriberVisibility = Visibility.Collapsed;
+                Bindings.Update();
+                return;
+            }
+
+            try
+            {
+                string requestUri =
+                    "https://www.googleapis.com/youtube/v3/channels" +
+                    "?part=statistics" +
+                    $"&id={Uri.EscapeDataString(Channel.Id)}" +
+                    $"&key={Uri.EscapeDataString(AppSettings.YouTubeApiKey)}";
+
+                using HttpResponseMessage response =
+                    await ChannelMetadataHttpClient.GetAsync(requestUri);
+
+                if (!response.IsSuccessStatusCode)
+                    return;
+
+                await using System.IO.Stream stream =
+                    await response.Content.ReadAsStreamAsync();
+
+                using JsonDocument document =
+                    await JsonDocument.ParseAsync(stream);
+
+                if (!document.RootElement.TryGetProperty("items", out JsonElement items) ||
+                    items.ValueKind != JsonValueKind.Array)
+                {
+                    return;
+                }
+
+                JsonElement channel =
+                    items.EnumerateArray().FirstOrDefault();
+
+                if (channel.ValueKind != JsonValueKind.Object ||
+                    !channel.TryGetProperty("statistics", out JsonElement statistics))
+                {
+                    return;
+                }
+
+                bool hiddenSubscriberCount =
+                    statistics.TryGetProperty("hiddenSubscriberCount", out JsonElement hiddenElement) &&
+                    hiddenElement.ValueKind == JsonValueKind.True;
+
+                if (hiddenSubscriberCount ||
+                    !statistics.TryGetProperty("subscriberCount", out JsonElement subscriberElement))
+                {
+                    ChannelSubscriberText = "";
+                    ChannelSubscriberVisibility = Visibility.Collapsed;
+                    Bindings.Update();
+                    return;
+                }
+
+                string subscriberCount =
+                    subscriberElement.ValueKind == JsonValueKind.String
+                        ? subscriberElement.GetString() ?? ""
+                        : subscriberElement.GetRawText();
+
+                if (!ulong.TryParse(
+                        subscriberCount,
+                        NumberStyles.Integer,
+                        CultureInfo.InvariantCulture,
+                        out ulong count))
+                {
+                    return;
+                }
+
+                ChannelSubscriberText =
+                    $"{FormatCompactSubscriberCount(count)} subscribers";
+
+                ChannelSubscriberVisibility = Visibility.Visible;
+                Bindings.Update();
+            }
+            catch (Exception ex) when (ex is HttpRequestException ||
+                ex is TaskCanceledException ||
+                ex is JsonException)
+            {
+                // Subscriber count is optional polish. Never block the channel page
+                // if YouTube metadata or quota is unavailable.
+            }
+        }
+
+        private static string FormatCompactSubscriberCount(ulong count)
+        {
+            return count switch
+            {
+                >= 1_000_000_000 => $"{TrimCompactCount(count / 1_000_000_000d)}B",
+                >= 1_000_000 => $"{TrimCompactCount(count / 1_000_000d)}M",
+                >= 1_000 => $"{TrimCompactCount(count / 1_000d)}K",
+                _ => count.ToString("N0", CultureInfo.InvariantCulture)
+            };
+        }
+
+        private static string TrimCompactCount(double value)
+        {
+            return value.ToString(value >= 10 ? "0.#" : "0.##", CultureInfo.InvariantCulture);
+        }
+
         private void SetLoading(string message)
         {
             LoadingText = message;
@@ -417,6 +555,8 @@ namespace SmoothTube
             {
                 ApplySubscriptionButtonState(cache.IsSubscribed.Value);
             }
+
+            _ = LoadChannelSubscriberTextAsync();
 
             return true;
         }
@@ -631,6 +771,41 @@ namespace SmoothTube
                 hasBanner
                     ? Visibility.Collapsed
                     : Visibility.Visible;
+
+            UpdateChannelBannerSize();
+        }
+
+        private void UpdateChannelBannerSize()
+        {
+            if (ChannelBanner == null)
+                return;
+
+            double availableWidth =
+                ActualWidth;
+
+            if (availableWidth <= 0 && ChannelBanner.ActualWidth > 0)
+            {
+                availableWidth = ChannelBanner.ActualWidth;
+            }
+
+            if (availableWidth <= 0)
+                return;
+
+            // YouTube channel art is uploaded as a 16:9 source image, but desktop
+            // channel pages show the centered ultra-wide banner strip. Keep SmoothTube
+            // focused on that desktop center/safe zone instead of showing the full image.
+            const double desktopBannerAspectRatio = 6.05;
+
+            double contentWidth =
+                Math.Max(0, availableWidth - 80);
+
+            double bannerHeight =
+                Math.Clamp(
+                    contentWidth / desktopBannerAspectRatio,
+                    200,
+                    280);
+
+            ChannelBanner.Height = bannerHeight;
         }
 
         private static BitmapImage? CreateImageSource(string value)

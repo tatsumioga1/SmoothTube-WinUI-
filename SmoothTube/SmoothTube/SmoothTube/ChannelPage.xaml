@@ -18,7 +18,9 @@
 
             <Border
                 x:Name="ChannelBanner"
-                Height="180"
+                Height="240"
+                MinHeight="200"
+                MaxHeight="280"
                 CornerRadius="14"
                 Background="#1F1F1F">
 
@@ -26,7 +28,9 @@
 
                 <Image
                     x:Name="ChannelBannerImage"
-                    Stretch="UniformToFill"/>
+                    Stretch="UniformToFill"
+                    HorizontalAlignment="Center"
+                    VerticalAlignment="Center"/>
 
                     <TextBlock
                         x:Name="ChannelBannerPlaceholder"
@@ -70,6 +74,13 @@
                         Text="{x:Bind Channel.Title}"
                         FontSize="36"
                         FontWeight="Bold"/>
+
+                    <TextBlock
+                        Text="{x:Bind ChannelSubscriberText, Mode=OneWay}"
+                        FontSize="14"
+                        FontWeight="SemiBold"
+                        Opacity="0.72"
+                        Visibility="{x:Bind ChannelSubscriberVisibility, Mode=OneWay}"/>
 
                     <TextBlock
                         Text="{x:Bind Channel.Description}"

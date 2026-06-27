@@ -62,7 +62,11 @@
                     <Border
                         x:Name="PlayerBorder"
                         CornerRadius="16"
-                        Background="#111111">
+                        Background="Transparent"
+                        BorderThickness="0"
+                        Padding="0"
+                        HorizontalAlignment="Stretch"
+                        MinHeight="180">
 
                         <Grid>
 
@@ -570,7 +574,7 @@
                             HorizontalAlignment="Stretch"
                             VerticalAlignment="Top"
                             CornerRadius="12"
-                            Background="#111111"
+                            Background="Transparent"
                             Visibility="Collapsed">
 
                             <Grid>
@@ -718,7 +722,7 @@
                                         Width="140"
                                         Height="80"
                                         CornerRadius="8"
-                                        Background="#111111">
+                                        Background="Transparent">
 
                                         <Image
                                             Loaded="VideoThumbnail_Loaded"
