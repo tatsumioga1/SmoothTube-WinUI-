@@ -10,7 +10,7 @@ SmoothTube is a native Windows 11 YouTube client built with **WinUI 3**, **C#**,
 
 SmoothTube v1.3.0 focuses on light mode polish, fullscreen player cleanup, fresher video metadata, improved Channel page loading, better upload pagination, and overall watch-page refinement.
 
-### v1.2.0 Highlights
+### v1.3.0 Highlights
 
 - Optimized light mode styling across watch pages, cards, lists, and surrounding surfaces for a cleaner and more consistent look.
 - Fixed the embedded player fullscreen border issue and improved fullscreen sizing/alignment so videos fill the available space more cleanly.
