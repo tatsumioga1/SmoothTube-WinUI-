@@ -142,7 +142,7 @@
                                 Height="190"
                                 Margin="0,0,18,18"
                                 CornerRadius="16"
-                                Background="#1F1F1F"
+                                Background="{ThemeResource AppCardBackgroundBrush}"
                                 Tapped="PlaylistCard_Tapped">
 
                                 <Grid>
@@ -155,7 +155,7 @@
                                     <Border
                                         Grid.Row="0"
                                         CornerRadius="16,16,0,0"
-                                        Background="#111111">
+                                        Background="{ThemeResource AppThumbnailBackgroundBrush}">
 
                                         <Grid>
 
@@ -167,11 +167,12 @@
                                                 Padding="10,6"
                                                 HorizontalAlignment="Right"
                                                 VerticalAlignment="Bottom"
-                                                Background="#CC000000"
+                                                Background="{StaticResource AppBadgeBackgroundBrush}"
                                                 CornerRadius="8,0,0,0">
 
                                                 <TextBlock
                                                     Text="{x:Bind VideoCountText}"
+                                                    Foreground="{StaticResource AppMediaForegroundBrush}"
                                                     FontSize="12"
                                                     FontWeight="SemiBold"/>
 

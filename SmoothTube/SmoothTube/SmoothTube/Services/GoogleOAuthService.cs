@@ -282,7 +282,7 @@ namespace SmoothTube.Services
         {
             byte[] body =
                 Encoding.UTF8.GetBytes(
-                    $"<!doctype html><title>SmoothTube</title><body style=\"font-family:Segoe UI,sans-serif;background:#111;color:#fff;padding:40px\"><h1>{WebUtility.HtmlEncode(message)}</h1></body>");
+                $"<!doctype html><title>SmoothTube</title><meta name=\"color-scheme\" content=\"light dark\"><body style=\"font-family:Segoe UI,sans-serif;background:Canvas;color:CanvasText;padding:40px\"><h1>{WebUtility.HtmlEncode(message)}</h1></body>");
 
             response.ContentType = "text/html; charset=utf-8";
             response.ContentLength64 = body.Length;

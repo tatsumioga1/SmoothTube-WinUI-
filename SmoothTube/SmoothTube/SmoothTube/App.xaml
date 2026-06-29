@@ -6,11 +6,50 @@
     xmlns:local="using:SmoothTube">
     <Application.Resources>
         <ResourceDictionary>
+            <ResourceDictionary.ThemeDictionaries>
+                <ResourceDictionary x:Key="Default">
+                    <SolidColorBrush x:Key="AppCardBackgroundBrush" Color="#FF1F1F1F"/>
+                    <SolidColorBrush x:Key="AppThumbnailBackgroundBrush" Color="#FF111111"/>
+                    <SolidColorBrush x:Key="AppPlayerFrameBackgroundBrush" Color="#FF111111"/>
+                    <SolidColorBrush x:Key="AppSkeletonStrongBackgroundBrush" Color="#FF303030"/>
+                    <SolidColorBrush x:Key="AppSkeletonMediumBackgroundBrush" Color="#FF2A2A2A"/>
+                    <SolidColorBrush x:Key="AppSkeletonSubtleBackgroundBrush" Color="#FF292929"/>
+                    <SolidColorBrush x:Key="AppSkeletonCardBackgroundBrush" Color="#18FFFFFF"/>
+                </ResourceDictionary>
+
+                <ResourceDictionary x:Key="Light">
+                    <SolidColorBrush x:Key="AppCardBackgroundBrush" Color="#D9FFFFFF"/>
+                    <SolidColorBrush x:Key="AppThumbnailBackgroundBrush" Color="#14000000"/>
+                    <SolidColorBrush x:Key="AppPlayerFrameBackgroundBrush" Color="#FFFFFFFF"/>
+                    <SolidColorBrush x:Key="AppSkeletonStrongBackgroundBrush" Color="#24000000"/>
+                    <SolidColorBrush x:Key="AppSkeletonMediumBackgroundBrush" Color="#1A000000"/>
+                    <SolidColorBrush x:Key="AppSkeletonSubtleBackgroundBrush" Color="#12000000"/>
+                    <SolidColorBrush x:Key="AppSkeletonCardBackgroundBrush" Color="#0D000000"/>
+                </ResourceDictionary>
+
+                <ResourceDictionary x:Key="HighContrast">
+                    <SolidColorBrush x:Key="AppCardBackgroundBrush" Color="{ThemeResource SystemColorWindowColor}"/>
+                    <SolidColorBrush x:Key="AppThumbnailBackgroundBrush" Color="{ThemeResource SystemColorWindowColor}"/>
+                    <SolidColorBrush x:Key="AppPlayerFrameBackgroundBrush" Color="{ThemeResource SystemColorWindowColor}"/>
+                    <SolidColorBrush x:Key="AppSkeletonStrongBackgroundBrush" Color="{ThemeResource SystemColorWindowTextColor}"/>
+                    <SolidColorBrush x:Key="AppSkeletonMediumBackgroundBrush" Color="{ThemeResource SystemColorGrayTextColor}"/>
+                    <SolidColorBrush x:Key="AppSkeletonSubtleBackgroundBrush" Color="{ThemeResource SystemColorGrayTextColor}"/>
+                    <SolidColorBrush x:Key="AppSkeletonCardBackgroundBrush" Color="{ThemeResource SystemColorWindowColor}"/>
+                </ResourceDictionary>
+            </ResourceDictionary.ThemeDictionaries>
+
             <ResourceDictionary.MergedDictionaries>
                 <XamlControlsResources xmlns="using:Microsoft.UI.Xaml.Controls" />
-                <!-- Other merged dictionaries here -->
             </ResourceDictionary.MergedDictionaries>
-            <!-- Other app resources here -->
+
+            <!-- Playback surfaces and status badges intentionally stay dark in both themes. -->
+            <SolidColorBrush x:Key="AppMediaSurfaceBrush" Color="#FF111111"/>
+            <SolidColorBrush x:Key="AppPlayerControlsBackgroundBrush" Color="#FF181818"/>
+            <SolidColorBrush x:Key="AppOverlayBackgroundBrush" Color="#E6111111"/>
+            <SolidColorBrush x:Key="AppBadgeBackgroundBrush" Color="#D9000000"/>
+            <SolidColorBrush x:Key="AppPremiereBadgeBackgroundBrush" Color="#D98A4B00"/>
+            <SolidColorBrush x:Key="AppLiveBadgeBackgroundBrush" Color="#FFD91F1F"/>
+            <SolidColorBrush x:Key="AppMediaForegroundBrush" Color="White"/>
         </ResourceDictionary>
     </Application.Resources>
 </Application>

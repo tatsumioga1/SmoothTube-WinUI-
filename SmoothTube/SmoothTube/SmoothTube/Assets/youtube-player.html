@@ -20,8 +20,7 @@
     /*
       WebView2 itself does not reliably inherit WinUI rounded clipping.
       Keep the page transparent and clip the actual YouTube iframe inside
-      a rounded wrapper instead. The iframe is expanded by 1px on all sides
-      to hide anti-aliased square-edge residue.
+      a rounded wrapper instead.
     */
     #playerShell {
       position: fixed;
@@ -36,10 +35,9 @@
     #player,
     #playerShell > iframe {
       position: absolute !important;
-      left: -1px !important;
-      top: -1px !important;
-      width: calc(100% + 2px) !important;
-      height: calc(100% + 2px) !important;
+      inset: 0 !important;
+      width: 100% !important;
+      height: 100% !important;
       margin: 0 !important;
       border: 0 !important;
       padding: 0 !important;
@@ -58,10 +56,7 @@
       background: transparent !important;
     }
 
-    body.smooth-fullscreen #playerShell,
-    body.smooth-fullscreen #player,
-    body.smooth-fullscreen #player iframe,
-    body.smooth-fullscreen iframe {
+    body.smooth-fullscreen #playerShell {
       left: 0 !important;
       top: 0 !important;
       width: 100% !important;
@@ -71,8 +66,20 @@
       background: #000 !important;
     }
 
-    body.smooth-fullscreen,
-    body.smooth-fullscreen html {
+    body.smooth-fullscreen #player,
+    body.smooth-fullscreen #playerShell > iframe,
+    body.smooth-fullscreen #player iframe,
+    body.smooth-fullscreen iframe {
+      inset: 0 !important;
+      width: 100% !important;
+      height: 100% !important;
+      border-radius: 0 !important;
+      clip-path: none !important;
+      background: #000 !important;
+    }
+
+    html.smooth-fullscreen,
+    body.smooth-fullscreen {
       background: #000 !important;
     }
 
@@ -195,6 +202,7 @@
         !!document.mozFullScreenElement ||
         !!document.msFullscreenElement;
 
+      document.documentElement.classList.toggle("smooth-fullscreen", isFullScreen);
       document.body.classList.toggle("smooth-fullscreen", isFullScreen);
     }
 

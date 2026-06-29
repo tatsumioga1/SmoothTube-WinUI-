@@ -266,13 +266,13 @@ namespace SmoothTube.Services
 
             return new VideoItem
             {
+                PublishedAtSort = source.PublishedAtSort ?? existing?.PublishedAtSort,
                 Id = source.Id,
                 Title = string.IsNullOrWhiteSpace(source.Title) ? existing?.Title ?? "" : source.Title,
                 Channel = string.IsNullOrWhiteSpace(source.Channel) ? existing?.Channel ?? "" : source.Channel,
                 Views = string.IsNullOrWhiteSpace(source.Views) ? existing?.Views ?? "" : source.Views,
                 Duration = string.IsNullOrWhiteSpace(source.Duration) ? existing?.Duration ?? "" : source.Duration,
-                PublishedAt = string.IsNullOrWhiteSpace(source.PublishedAt) ? existing?.PublishedAt ?? "" : source.PublishedAt,
-                PublishedAtSort = source.PublishedAtSort ?? existing?.PublishedAtSort,
+                PublishedAt = ResolvePublishedAtText(source, existing),
                 Thumbnail = NormalizeVideoThumbnailUrl(
                     string.IsNullOrWhiteSpace(source.Thumbnail)
                         ? existing?.Thumbnail ?? ""
@@ -299,6 +299,7 @@ namespace SmoothTube.Services
                 .Select(video =>
                 {
                     video.Thumbnail = NormalizeVideoThumbnailUrl(video.Thumbnail);
+                    video.PublishedAt = ResolvePublishedAtText(video, null);
                     video.ResumeSeconds = Math.Max(0, video.ResumeSeconds);
                     video.DurationSeconds = ResolveDurationSeconds(
                         video.DurationSeconds,
@@ -331,6 +332,89 @@ namespace SmoothTube.Services
                 .OrderByDescending(video => video.LastWatchedAt ?? DateTimeOffset.MinValue)
                 .Take(MaxContinueWatchingItems)
                 .ToList();
+        }
+
+        private static string ResolvePublishedAtText(
+            VideoItem source,
+            VideoItem? existing)
+        {
+            DateTimeOffset? publishedAt =
+                source.PublishedAtSort ??
+                existing?.PublishedAtSort;
+
+            if (!source.IsLive &&
+                !source.IsPremiere &&
+                publishedAt.HasValue)
+            {
+                return FormatRelativePublishedAt(
+                    publishedAt.Value);
+            }
+
+            return string.IsNullOrWhiteSpace(source.PublishedAt)
+                ? existing?.PublishedAt ?? ""
+                : source.PublishedAt;
+        }
+
+        private static string FormatRelativePublishedAt(
+            DateTimeOffset value)
+        {
+            DateTimeOffset publishedAt = value.ToLocalTime();
+            DateTimeOffset now = DateTimeOffset.Now;
+
+            if (publishedAt > now)
+            {
+                publishedAt = now;
+            }
+
+            TimeSpan age = now - publishedAt;
+
+            if (age.TotalMinutes < 1)
+                return "Just now";
+
+            if (age.TotalHours < 1)
+            {
+                int minutes = Math.Max(1, (int)Math.Floor(age.TotalMinutes));
+                return minutes == 1
+                    ? "1 minute ago"
+                    : $"{minutes} minutes ago";
+            }
+
+            if (age.TotalDays < 1)
+            {
+                int hours = Math.Max(1, (int)Math.Floor(age.TotalHours));
+                return hours == 1
+                    ? "1 hour ago"
+                    : $"{hours} hours ago";
+            }
+
+            if (age.TotalDays < 7)
+            {
+                int days = Math.Max(1, (int)Math.Floor(age.TotalDays));
+                return days == 1
+                    ? "1 day ago"
+                    : $"{days} days ago";
+            }
+
+            if (age.TotalDays < 30)
+            {
+                int weeks = Math.Max(1, (int)Math.Floor(age.TotalDays / 7));
+                return weeks == 1
+                    ? "1 week ago"
+                    : $"{weeks} weeks ago";
+            }
+
+            if (age.TotalDays < 365)
+            {
+                int months = Math.Max(1, (int)Math.Floor(age.TotalDays / 30));
+                return months == 1
+                    ? "1 month ago"
+                    : $"{months} months ago";
+            }
+
+            int years = Math.Max(1, (int)Math.Floor(age.TotalDays / 365));
+            return years == 1
+                ? "1 year ago"
+                : $"{years} years ago";
         }
 
         private static void Save(List<VideoItem> videos)

@@ -63,6 +63,12 @@ namespace SmoothTube
 
         public Visibility LoadingVisibility { get; set; } = Visibility.Collapsed;
 
+        public Visibility RefreshIconVisibility { get; set; } = Visibility.Visible;
+
+        public Visibility RefreshProgressVisibility { get; set; } = Visibility.Collapsed;
+
+        public bool IsRefreshing { get; set; }
+
         private int requestedUploadCount = 24;
         private int requestedShortCount = 24;
         private int requestedLivestreamCount = 24;
@@ -121,6 +127,11 @@ namespace SmoothTube
 
         private async System.Threading.Tasks.Task LoadChannelAsync(bool forceRefresh)
         {
+            if (forceRefresh)
+            {
+                ClearChannelCache(Channel.Id);
+            }
+
             if (!forceRefresh && TryLoadFromCache())
             {
                 ClearLoading();
@@ -238,7 +249,7 @@ namespace SmoothTube
             Bindings.Update();
 
             int previousUploadCount = UploadVideos.Count;
-            await LoadChannelAsync(false);
+            await LoadChannelAsync(true);
 
             if (UploadVideos.Count <= previousUploadCount)
             {
@@ -250,6 +261,37 @@ namespace SmoothTube
             }
 
             isLoadingMore = false;
+        }
+
+        private async void RefreshButton_Click(
+            object sender,
+            RoutedEventArgs e)
+        {
+            if (string.IsNullOrWhiteSpace(Channel.Id))
+                return;
+
+            SetRefreshLoading(true);
+
+            try
+            {
+                requestedUploadCount = Math.Max(requestedUploadCount, 24);
+                requestedShortCount = Math.Max(requestedShortCount, 24);
+                requestedLivestreamCount = Math.Max(requestedLivestreamCount, 24);
+                shortsLoaded = false;
+                livestreamsLoaded = false;
+                allVideos.Clear();
+                UploadVideos.Clear();
+                ShortVideos.Clear();
+                LivestreamVideos.Clear();
+                SetLoading("Refreshing channel...");
+                StatusText = "Refreshing channel...";
+                Bindings.Update();
+                await LoadChannelAsync(true);
+            }
+            finally
+            {
+                SetRefreshLoading(false);
+            }
         }
 
         private async void ChannelContentPivot_SelectionChanged(
@@ -582,6 +624,39 @@ namespace SmoothTube
             PersistentCacheService.Save(
                 ChannelCacheFileName,
                 ChannelCache);
+        }
+
+        private static void ClearChannelCache(string channelId)
+        {
+            EnsurePersistentChannelCacheLoaded();
+
+            if (string.IsNullOrWhiteSpace(channelId))
+                return;
+
+            if (ChannelCache.Remove(channelId))
+            {
+                PersistentCacheService.Save(
+                    ChannelCacheFileName,
+                    ChannelCache);
+            }
+        }
+
+        private void SetRefreshLoading(bool isRefreshing)
+        {
+            IsRefreshing = isRefreshing;
+            RefreshIconVisibility = isRefreshing
+                ? Visibility.Collapsed
+                : Visibility.Visible;
+            RefreshProgressVisibility = isRefreshing
+                ? Visibility.Visible
+                : Visibility.Collapsed;
+
+            if (RefreshButton != null)
+            {
+                RefreshButton.IsEnabled = !isRefreshing;
+            }
+
+            Bindings.Update();
         }
 
         private string FormatLoadedStatusText(DateTimeOffset? lastLoadedAt = null)

@@ -57,12 +57,14 @@
 
                 <!-- Player -->
 
-                <StackPanel Spacing="0">
+                <StackPanel
+                    x:Name="PlayerSectionPanel"
+                    Spacing="0">
 
                     <Border
                         x:Name="PlayerBorder"
                         CornerRadius="12"
-                        Background="Transparent"
+                        Background="{ThemeResource AppPlayerFrameBackgroundBrush}"
                         BorderThickness="0"
                         Padding="0"
                         HorizontalAlignment="Stretch"
@@ -94,7 +96,7 @@
                             <Border
                                 x:Name="BlockedPlayerOverlay"
                                 Padding="32"
-                                Background="#E6111111"
+                                Background="{StaticResource AppOverlayBackgroundBrush}"
                                 Visibility="Collapsed">
 
                                 <StackPanel
@@ -105,12 +107,14 @@
 
                                     <TextBlock
                                         Text="Playback is disabled on other websites"
+                                        Foreground="{StaticResource AppMediaForegroundBrush}"
                                         FontSize="24"
                                         FontWeight="SemiBold"
                                         TextWrapping="Wrap"/>
 
                                     <TextBlock
                                         Text="This video owner does not allow embedded playback. You can open it in a separate in-app YouTube window."
+                                        Foreground="{StaticResource AppMediaForegroundBrush}"
                                         TextWrapping="Wrap"
                                         Opacity="0.8"/>
 
@@ -133,7 +137,7 @@
                         x:Name="MockControlsPanel"
                         Padding="16"
                         CornerRadius="0,0,16,16"
-                        Background="#181818">
+                        Background="{StaticResource AppPlayerControlsBackgroundBrush}">
 
                         <StackPanel Spacing="12">
 
@@ -160,6 +164,7 @@
 
                                     <TextBlock
                                         VerticalAlignment="Center"
+                                        Foreground="{StaticResource AppMediaForegroundBrush}"
                                         Text="{Binding Duration}"/>
 
                                 </StackPanel>
@@ -256,7 +261,7 @@
                                     Width="44"
                                     Height="44"
                                     CornerRadius="22"
-                                    Background="#2A2A2A"
+                                    Background="{ThemeResource AppThumbnailBackgroundBrush}"
                                     VerticalAlignment="Center">
 
                                     <Image
@@ -334,7 +339,7 @@
                     x:Name="DescriptionPanel"
                     Padding="20"
                     CornerRadius="12"
-                    Background="#1F1F1F">
+                    Background="{ThemeResource AppCardBackgroundBrush}">
 
                     <StackPanel Spacing="10">
 
@@ -396,7 +401,7 @@
                                     Margin="0,0,0,12"
                                     Padding="14"
                                     CornerRadius="12"
-                                    Background="#1F1F1F">
+                                    Background="{ThemeResource AppCardBackgroundBrush}">
 
                                     <StackPanel Spacing="6">
 
@@ -482,7 +487,7 @@
                                     Margin="0,0,0,10"
                                     Padding="12"
                                     CornerRadius="10"
-                                    Background="#1F1F1F">
+                                    Background="{ThemeResource AppCardBackgroundBrush}">
 
                                     <StackPanel Spacing="4">
 
@@ -574,7 +579,7 @@
                             HorizontalAlignment="Stretch"
                             VerticalAlignment="Top"
                             CornerRadius="12"
-                            Background="#111111"
+                            Background="{StaticResource AppMediaSurfaceBrush}"
                             Visibility="Collapsed">
 
                             <Grid>
@@ -615,7 +620,7 @@
                                         Margin="0,0,0,10"
                                         Padding="12"
                                         CornerRadius="10"
-                                        Background="#1F1F1F">
+                                        Background="{ThemeResource AppCardBackgroundBrush}">
 
                                         <StackPanel Spacing="4">
 
@@ -707,7 +712,7 @@
                                 Margin="0,0,0,12"
                                 Padding="8"
                                 CornerRadius="12"
-                                Background="#1F1F1F"
+                                Background="{ThemeResource AppCardBackgroundBrush}"
                                 Tapped="UpNextVideo_Tapped">
 
                                 <Grid ColumnSpacing="12">
@@ -722,7 +727,7 @@
                                         Width="140"
                                         Height="80"
                                         CornerRadius="8"
-                                        Background="#111111">
+                                        Background="{ThemeResource AppThumbnailBackgroundBrush}">
 
                                         <Image
                                             Loaded="VideoThumbnail_Loaded"
@@ -788,6 +793,14 @@
         </Grid>
 
     </ScrollViewer>
+
+    <Grid
+        x:Name="FullScreenPlayerHost"
+        Background="Black"
+        Visibility="Collapsed"
+        HorizontalAlignment="Stretch"
+        VerticalAlignment="Stretch"
+        Canvas.ZIndex="1000"/>
 
     </Grid>
 

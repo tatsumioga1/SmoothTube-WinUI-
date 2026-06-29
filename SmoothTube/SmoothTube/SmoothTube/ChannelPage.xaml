@@ -11,10 +11,45 @@
             Padding="40,24,40,24"
             Spacing="24">
 
-            <Button
-                Content="Back"
-                HorizontalAlignment="Left"
-                Click="BackButton_Click"/>
+            <Grid>
+
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+
+                <Button
+                    Content="Back"
+                    Click="BackButton_Click"/>
+
+                <Button
+                    x:Name="RefreshButton"
+                    Grid.Column="2"
+                    Width="40"
+                    Height="40"
+                    Padding="0"
+                    HorizontalAlignment="Right"
+                    ToolTipService.ToolTip="Refresh channel"
+                    Click="RefreshButton_Click">
+
+                    <Grid>
+
+                        <SymbolIcon
+                            Symbol="Refresh"
+                            Visibility="{x:Bind RefreshIconVisibility, Mode=OneWay}"/>
+
+                        <ProgressRing
+                            Width="18"
+                            Height="18"
+                            IsActive="{x:Bind IsRefreshing, Mode=OneWay}"
+                            Visibility="{x:Bind RefreshProgressVisibility, Mode=OneWay}"/>
+
+                    </Grid>
+
+                </Button>
+
+            </Grid>
 
             <Border
                 x:Name="ChannelBanner"
@@ -22,7 +57,7 @@
                 MinHeight="200"
                 MaxHeight="280"
                 CornerRadius="14"
-                Background="#1F1F1F">
+                Background="{ThemeResource AppCardBackgroundBrush}">
 
                 <Grid>
 
@@ -57,7 +92,7 @@
                     Width="88"
                     Height="88"
                     CornerRadius="44"
-                    Background="#1F1F1F">
+                    Background="{ThemeResource AppThumbnailBackgroundBrush}">
 
                     <Image
                         x:Name="ChannelThumbnailImage"

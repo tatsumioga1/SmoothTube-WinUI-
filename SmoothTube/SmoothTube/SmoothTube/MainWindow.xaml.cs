@@ -10,6 +10,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Runtime.InteropServices;
 using System.Text.Json;
 using Windows.Storage;
 using WinRT.Interop;
@@ -21,8 +22,13 @@ namespace SmoothTube
         public static MainWindow? Instance { get; private set; }
 
         private readonly AppWindow appWindow;
+        private readonly nint windowHandle;
+        private readonly SystemBackdrop micaBackdrop;
         private readonly Dictionary<string, ChannelItem> subscriptionShortcuts = [];
         private const string CachedSubscriptionShortcutsFile = "subscription-shortcuts.json";
+        private const int DwmWindowAttributeBorderColor = 34;
+        private const uint DwmColorNone = 0xFFFFFFFE;
+        private const uint DwmColorDefault = 0xFFFFFFFF;
         private bool subscriptionShortcutsLoaded;
         private bool subscriptionShortcutsLoading;
 
@@ -32,15 +38,18 @@ namespace SmoothTube
 
             Instance = this;
 
-            nint windowHandle = WindowNative.GetWindowHandle(this);
+            windowHandle = WindowNative.GetWindowHandle(this);
             WindowId windowId = Win32Interop.GetWindowIdFromWindow(windowHandle);
             appWindow = AppWindow.GetFromWindowId(windowId);
+            ApplyWindowIcon();
 
             // Windows 11 Mica
-            SystemBackdrop = new MicaBackdrop
+            micaBackdrop = new MicaBackdrop
             {
                 Kind = MicaKind.BaseAlt
             };
+
+            SystemBackdrop = micaBackdrop;
 
             // Extend Mica into title bar
             ExtendsContentIntoTitleBar = true;
@@ -53,24 +62,84 @@ namespace SmoothTube
             ContentFrame.Navigate(typeof(HomePage));
         }
 
+        private void ApplyWindowIcon()
+        {
+            string iconPath =
+                Path.Combine(
+                    AppContext.BaseDirectory,
+                    "Assets",
+                    "SmoothTube_TaskbarIcon_Assets",
+                    "Square44x44Logo.targetsize-256.png");
+
+            if (!File.Exists(iconPath))
+                return;
+
+            try
+            {
+                appWindow.SetIcon(iconPath);
+            }
+            catch
+            {
+            }
+        }
+
         public void SetFullScreen(bool isFullScreen)
         {
             if (isFullScreen)
             {
+                SystemBackdrop = null;
+                ExtendsContentIntoTitleBar = false;
+                SetTitleBar(null);
                 AppTitleBar.Visibility = Visibility.Collapsed;
+                TitleBarRow.Height = new GridLength(0);
                 Grid.SetRow(AppNavigation, 0);
                 Grid.SetRowSpan(AppNavigation, 2);
                 AppNavigation.IsPaneVisible = false;
+                RootGrid.Background = new SolidColorBrush(Colors.Black);
+                AppNavigation.Background = new SolidColorBrush(Colors.Black);
+                ContentFrame.Background = new SolidColorBrush(Colors.Black);
+                AppNavigation.Margin = new Thickness(-2, -4, -2, -2);
                 appWindow.SetPresenter(AppWindowPresenterKind.FullScreen);
+                ApplyWindowBorderlessAppearance(true);
                 return;
             }
 
+            SystemBackdrop = micaBackdrop;
+            ExtendsContentIntoTitleBar = true;
+            SetTitleBar(AppTitleBar);
             AppTitleBar.Visibility = Visibility.Visible;
+            TitleBarRow.Height = new GridLength(40);
             Grid.SetRow(AppNavigation, 1);
             Grid.SetRowSpan(AppNavigation, 1);
             AppNavigation.IsPaneVisible = true;
+            RootGrid.Background = new SolidColorBrush(Colors.Transparent);
+            AppNavigation.Background = new SolidColorBrush(Colors.Transparent);
+            ContentFrame.Background = new SolidColorBrush(Colors.Transparent);
+            AppNavigation.Margin = new Thickness(0);
             appWindow.SetPresenter(AppWindowPresenterKind.Overlapped);
+            ApplyWindowBorderlessAppearance(false);
         }
+
+        private void ApplyWindowBorderlessAppearance(bool isFullScreen)
+        {
+            uint borderColor =
+                isFullScreen
+                    ? DwmColorNone
+                    : DwmColorDefault;
+
+            _ = DwmSetWindowAttribute(
+                windowHandle,
+                DwmWindowAttributeBorderColor,
+                ref borderColor,
+                sizeof(uint));
+        }
+
+        [DllImport("dwmapi.dll")]
+        private static extern int DwmSetWindowAttribute(
+            nint windowHandle,
+            int attribute,
+            ref uint attributeValue,
+            int attributeSize);
 
         private void AppNavigation_SelectionChanged(
             NavigationView sender,

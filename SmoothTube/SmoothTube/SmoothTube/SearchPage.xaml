@@ -72,7 +72,7 @@
                         Margin="0,0,0,12"
                         Padding="12"
                         CornerRadius="8"
-                        Background="#1F1F1F"
+                        Background="{ThemeResource AppCardBackgroundBrush}"
                         Tapped="Result_Tapped">
 
                         <Grid ColumnSpacing="16">
@@ -92,7 +92,7 @@
                                 <Ellipse
                                     Width="104"
                                     Height="104"
-                                    Fill="#151515"
+                                    Fill="{ThemeResource AppThumbnailBackgroundBrush}"
                                     HorizontalAlignment="Center"
                                     VerticalAlignment="Center"/>
 
@@ -117,7 +117,7 @@
                                 Width="220"
                                 Height="124"
                                 CornerRadius="8"
-                                Background="#151515"
+                                Background="{ThemeResource AppThumbnailBackgroundBrush}"
                                 Visibility="{x:Bind VideoThumbnailVisibility, Mode=OneTime}"
                                 HorizontalAlignment="Left"
                                 VerticalAlignment="Center">

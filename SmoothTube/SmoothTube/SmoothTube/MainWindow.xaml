@@ -17,7 +17,9 @@
             Background="Transparent">
 
         <Grid.RowDefinitions>
-            <RowDefinition Height="40"/>
+            <RowDefinition
+                x:Name="TitleBarRow"
+                Height="40"/>
             <RowDefinition Height="*"/>
         </Grid.RowDefinitions>
 
@@ -28,12 +30,24 @@
             Grid.Row="0"
             Background="Transparent">
 
-            <TextBlock
+            <StackPanel
+                Orientation="Horizontal"
+                Spacing="10"
                 Margin="16,0,0,0"
-                VerticalAlignment="Center"
-                Text="SmoothTube"
-                FontWeight="SemiBold"
-                Opacity="0.9"/>
+                VerticalAlignment="Center">
+
+                <Image
+                    Width="20"
+                    Height="20"
+                    Source="ms-appx:///Assets/SmoothTube_TaskbarIcon_Assets/Square44x44Logo.scale-100.png"/>
+
+                <TextBlock
+                    VerticalAlignment="Center"
+                    Text="SmoothTube"
+                    FontWeight="SemiBold"
+                    Opacity="0.9"/>
+
+            </StackPanel>
 
         </Grid>
 

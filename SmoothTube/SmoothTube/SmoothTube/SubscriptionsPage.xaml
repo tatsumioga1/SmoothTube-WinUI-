@@ -268,35 +268,35 @@
                                     Height="265"
                                     Margin="0,0,12,20"
                                     CornerRadius="12"
-                                    Background="#18FFFFFF">
+                                    Background="{ThemeResource AppSkeletonCardBackgroundBrush}">
 
                                     <StackPanel Spacing="10">
 
                                         <Border
                                             Height="157.5"
                                             CornerRadius="12"
-                                            Background="#22FFFFFF"/>
+                                            Background="{ThemeResource AppSkeletonStrongBackgroundBrush}"/>
 
                                         <Border
                                             Width="245"
                                             Height="18"
                                             HorizontalAlignment="Left"
                                             CornerRadius="4"
-                                            Background="#22FFFFFF"/>
+                                            Background="{ThemeResource AppSkeletonStrongBackgroundBrush}"/>
 
                                         <Border
                                             Width="190"
                                             Height="14"
                                             HorizontalAlignment="Left"
                                             CornerRadius="4"
-                                            Background="#16FFFFFF"/>
+                                            Background="{ThemeResource AppSkeletonMediumBackgroundBrush}"/>
 
                                         <Border
                                             Width="120"
                                             Height="12"
                                             HorizontalAlignment="Left"
                                             CornerRadius="4"
-                                            Background="#12FFFFFF"/>
+                                            Background="{ThemeResource AppSkeletonSubtleBackgroundBrush}"/>
 
                                     </StackPanel>
 

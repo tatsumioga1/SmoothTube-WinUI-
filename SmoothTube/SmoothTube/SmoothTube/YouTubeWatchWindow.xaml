@@ -5,7 +5,7 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     Title="Watch on YouTube">
 
-    <Grid Background="#111111">
+    <Grid Background="{ThemeResource AppThumbnailBackgroundBrush}">
         <WebView2 x:Name="WatchWebView"/>
     </Grid>
 </Window>

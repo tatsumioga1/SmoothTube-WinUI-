@@ -78,7 +78,7 @@ namespace SmoothTube
         {
             InitializeComponent();
 
-            PlayerWebView.DefaultBackgroundColor = Colors.Transparent;
+            PlayerWebView.DefaultBackgroundColor = GetPlayerFrameColor();
 
             AddHandler(
                 UIElement.KeyDownEvent,
@@ -164,6 +164,13 @@ namespace SmoothTube
             {
                 // Ignore player toggle failures so keyboard handling never crashes the page.
             }
+        }
+
+        private Windows.UI.Color GetPlayerFrameColor()
+        {
+            return ActualTheme == ElementTheme.Light
+                ? Colors.White
+                : Colors.Black;
         }
 
         protected override void OnNavigatedTo(
@@ -678,10 +685,12 @@ namespace SmoothTube
 
             if (isPlayerFullScreen && XamlRoot != null)
             {
-                PlayerBorder.Width = XamlRoot.Size.Width;
-                PlayerBorder.Height = XamlRoot.Size.Height;
-                PlayerWebView.Width = XamlRoot.Size.Width;
-                PlayerWebView.Height = XamlRoot.Size.Height;
+                PlayerBorder.Width = double.NaN;
+                PlayerBorder.Height = double.NaN;
+                PlayerWebView.Width = double.NaN;
+                PlayerWebView.Height = double.NaN;
+                MockPlayerGrid.Width = double.NaN;
+                MockPlayerGrid.Height = double.NaN;
                 ApplyRoundedPlayerClip(
                     XamlRoot.Size.Width,
                     XamlRoot.Size.Height,
@@ -736,6 +745,32 @@ namespace SmoothTube
                 12);
 
             UpdateLiveChatFrameSize();
+        }
+
+        private void MovePlayerToFullScreenHost()
+        {
+            if (PlayerBorder.Parent is Panel currentParent)
+            {
+                currentParent.Children.Remove(PlayerBorder);
+            }
+
+            if (!FullScreenPlayerHost.Children.Contains(PlayerBorder))
+            {
+                FullScreenPlayerHost.Children.Add(PlayerBorder);
+            }
+        }
+
+        private void RestorePlayerToInlineHost()
+        {
+            if (PlayerBorder.Parent is Panel currentParent)
+            {
+                currentParent.Children.Remove(PlayerBorder);
+            }
+
+            if (!PlayerSectionPanel.Children.Contains(PlayerBorder))
+            {
+                PlayerSectionPanel.Children.Insert(0, PlayerBorder);
+            }
         }
 
         private void UpdateLiveChatFrameSize()
@@ -836,7 +871,7 @@ namespace SmoothTube
                     Uri.EscapeDataString(CurrentVideo.Id);
 
                 await PlayerWebView.EnsureCoreWebView2Async();
-                PlayerWebView.DefaultBackgroundColor = Colors.Transparent;
+                PlayerWebView.DefaultBackgroundColor = GetPlayerFrameColor();
                 EnsurePlayerHostMapped();
                 EnsurePlayerEventsAttached();
 
@@ -1365,6 +1400,7 @@ namespace SmoothTube
                         : "false";
 
                 await PlayerWebView.CoreWebView2.ExecuteScriptAsync(
+                    $"document.documentElement.classList.toggle('smooth-fullscreen', {state});" +
                     $"document.body && document.body.classList.toggle('smooth-fullscreen', {state});");
             }
             catch (Exception)
@@ -1379,103 +1415,54 @@ namespace SmoothTube
             MainWindow.Instance?.SetFullScreen(isFullScreen);
             ApplyPlayerHtmlFullScreenState(isFullScreen);
 
-            VideoActionsPanel.Visibility =
+            PageRoot.Background =
                 isFullScreen
-                    ? Visibility.Collapsed
-                    : Visibility.Visible;
-
-            UpNextPanel.Visibility =
-                isFullScreen
-                    ? Visibility.Collapsed
-                    : Visibility.Visible;
-
-            VideoInfoPanel.Visibility =
-                isFullScreen
-                    ? Visibility.Collapsed
-                    : Visibility.Visible;
-
-            DescriptionPanel.Visibility =
-                isFullScreen
-                    ? Visibility.Collapsed
-                    : Visibility.Visible;
-
-            CommentsPanel.Visibility =
-                isFullScreen
-                    ? Visibility.Collapsed
-                    : Visibility.Visible;
-
-            LiveChatPanel.Visibility =
-                isFullScreen || !CurrentVideo.IsLive
-                    ? Visibility.Collapsed
-                    : Visibility.Visible;
-
-            PageScrollViewer.VerticalScrollBarVisibility =
-                isFullScreen
-                    ? ScrollBarVisibility.Disabled
-                    : ScrollBarVisibility.Auto;
-
-            PageScrollViewer.HorizontalScrollBarVisibility =
-                isFullScreen
-                    ? ScrollBarVisibility.Disabled
-                    : ScrollBarVisibility.Disabled;
-
-            MainLayoutGrid.Padding =
-                isFullScreen
-                    ? new Thickness(0)
-                    : new Thickness(40);
-
-            MainLayoutGrid.ColumnSpacing =
-                isFullScreen
-                    ? 0
-                    : 24;
-
-            MainContentPanel.Spacing =
-                isFullScreen
-                    ? 0
-                    : 24;
-
-            SidebarColumn.Width =
-                isFullScreen
-                    ? new GridLength(0)
-                    : new GridLength(340);
+                    ? new SolidColorBrush(Colors.Black)
+                    : new SolidColorBrush(Colors.Transparent);
 
             PlayerBorder.CornerRadius =
                 isFullScreen
                     ? new CornerRadius(0)
                     : new CornerRadius(12);
 
+            PlayerBorder.Background =
+                isFullScreen
+                    ? new SolidColorBrush(Colors.Black)
+                    : (Brush)Application.Current.Resources["AppPlayerFrameBackgroundBrush"];
+
             if (isFullScreen && XamlRoot != null)
             {
-                Grid.SetColumn(MainContentPanel, 0);
-                Grid.SetColumnSpan(MainContentPanel, 2);
-                Grid.SetRowSpan(MainContentPanel, 2);
-                MainContentPanel.Width = XamlRoot.Size.Width;
-                MainContentPanel.Height = XamlRoot.Size.Height;
-                MainLayoutGrid.Width = XamlRoot.Size.Width;
-                MainLayoutGrid.Height = XamlRoot.Size.Height;
-                PageScrollViewer.Width = XamlRoot.Size.Width;
-                PageScrollViewer.Height = XamlRoot.Size.Height;
-                PlayerBorder.Width = XamlRoot.Size.Width;
-                PlayerBorder.Height = XamlRoot.Size.Height;
-                PlayerWebView.Width = XamlRoot.Size.Width;
-                PlayerWebView.Height = XamlRoot.Size.Height;
+                MovePlayerToFullScreenHost();
+                FullScreenPlayerHost.Visibility = Visibility.Visible;
+                FullScreenPlayerHost.IsHitTestVisible = true;
+                PlayerBorder.HorizontalAlignment = HorizontalAlignment.Stretch;
+                PlayerBorder.VerticalAlignment = VerticalAlignment.Stretch;
+                PlayerBorder.Width = double.NaN;
+                PlayerBorder.Height = double.NaN;
+                PlayerWebView.Width = double.NaN;
+                PlayerWebView.Height = double.NaN;
+                MockPlayerGrid.Width = double.NaN;
+                MockPlayerGrid.Height = double.NaN;
+                PageScrollViewer.IsHitTestVisible = false;
             }
             else
             {
-                Grid.SetColumnSpan(MainContentPanel, 1);
-                Grid.SetRowSpan(MainContentPanel, 1);
-                MainContentPanel.Width = double.NaN;
-                MainContentPanel.Height = double.NaN;
-                MainLayoutGrid.Width = double.NaN;
-                MainLayoutGrid.Height = double.NaN;
-                PageScrollViewer.Width = double.NaN;
-                PageScrollViewer.Height = double.NaN;
-                PlayerBorder.Width = double.NaN;
-                PlayerWebView.Width = double.NaN;
-                PlayerWebView.Height = double.NaN;
+                FullScreenPlayerHost.Visibility = Visibility.Collapsed;
+                FullScreenPlayerHost.IsHitTestVisible = false;
+                RestorePlayerToInlineHost();
+                PlayerBorder.HorizontalAlignment = HorizontalAlignment.Stretch;
+                PlayerBorder.VerticalAlignment = VerticalAlignment.Stretch;
+                PageScrollViewer.IsHitTestVisible = true;
                 UpdateLayoutForWidth();
                 ApplyLiveChatLayout();
             }
+
+            PageScrollViewer.VerticalScrollBarVisibility =
+                isFullScreen
+                    ? ScrollBarVisibility.Disabled
+                    : ScrollBarVisibility.Auto;
+
+            UpdatePlayerSize();
         }
 
         private void StopPlayback()
@@ -1891,9 +1878,9 @@ namespace SmoothTube
 
             List<string> parts = [];
 
-            if (!string.IsNullOrWhiteSpace(CurrentVideo.PublishedAt))
+            if (!string.IsNullOrWhiteSpace(GetCurrentVideoPublishedText()))
             {
-                parts.Add(CurrentVideo.PublishedAt);
+                parts.Add(GetCurrentVideoPublishedText());
             }
 
             if (!string.IsNullOrWhiteSpace(CurrentVideo.Views))
@@ -1902,6 +1889,83 @@ namespace SmoothTube
             }
 
             CurrentVideoMetaText = string.Join(" • ", parts);
+        }
+
+        private string GetCurrentVideoPublishedText()
+        {
+            if (CurrentVideo == null)
+                return "";
+
+            if (!CurrentVideo.IsLive &&
+                !CurrentVideo.IsPremiere &&
+                CurrentVideo.PublishedAtSort.HasValue)
+            {
+                return FormatRelativePublishedAt(
+                    CurrentVideo.PublishedAtSort.Value);
+            }
+
+            return CurrentVideo.PublishedAt ?? "";
+        }
+
+        private static string FormatRelativePublishedAt(
+            DateTimeOffset publishedAt)
+        {
+            DateTimeOffset now = DateTimeOffset.Now;
+
+            if (publishedAt > now)
+            {
+                publishedAt = now;
+            }
+
+            TimeSpan age = now - publishedAt;
+
+            if (age.TotalMinutes < 1)
+                return "Just now";
+
+            if (age.TotalHours < 1)
+            {
+                int minutes = Math.Max(1, (int)Math.Floor(age.TotalMinutes));
+                return minutes == 1
+                    ? "1 minute ago"
+                    : $"{minutes} minutes ago";
+            }
+
+            if (age.TotalDays < 1)
+            {
+                int hours = Math.Max(1, (int)Math.Floor(age.TotalHours));
+                return hours == 1
+                    ? "1 hour ago"
+                    : $"{hours} hours ago";
+            }
+
+            if (age.TotalDays < 7)
+            {
+                int days = Math.Max(1, (int)Math.Floor(age.TotalDays));
+                return days == 1
+                    ? "1 day ago"
+                    : $"{days} days ago";
+            }
+
+            if (age.TotalDays < 30)
+            {
+                int weeks = Math.Max(1, (int)Math.Floor(age.TotalDays / 7));
+                return weeks == 1
+                    ? "1 week ago"
+                    : $"{weeks} weeks ago";
+            }
+
+            if (age.TotalDays < 365)
+            {
+                int months = Math.Max(1, (int)Math.Floor(age.TotalDays / 30));
+                return months == 1
+                    ? "1 month ago"
+                    : $"{months} months ago";
+            }
+
+            int years = Math.Max(1, (int)Math.Floor(age.TotalDays / 365));
+            return years == 1
+                ? "1 year ago"
+                : $"{years} years ago";
         }
 
         private async Task LoadChannelPresentationAsync()
@@ -1942,10 +2006,8 @@ namespace SmoothTube
                 }
             }
 
-            if (string.IsNullOrWhiteSpace(CurrentChannelThumbnail) ||
-                string.IsNullOrWhiteSpace(CurrentChannelSubscriberText) ||
-                string.IsNullOrWhiteSpace(CurrentVideo.Description) ||
-                string.IsNullOrWhiteSpace(CurrentVideo.Views))
+            if (CurrentVideo.Category == "YouTube" &&
+                !string.IsNullOrWhiteSpace(CurrentVideo.Id))
             {
                 await TryEnrichCurrentVideoFromWatchPageAsync();
             }
@@ -2093,14 +2155,18 @@ namespace SmoothTube
                     CurrentVideo.Description = description;
                 }
 
-                if (string.IsNullOrWhiteSpace(CurrentVideo.Views))
-                {
-                    string viewText = GetBestWatchPageViewText(body);
+                string publishedText = GetBestWatchPagePublishedText(body);
 
-                    if (!string.IsNullOrWhiteSpace(viewText))
-                    {
-                        CurrentVideo.Views = viewText;
-                    }
+                if (!string.IsNullOrWhiteSpace(publishedText))
+                {
+                    CurrentVideo.PublishedAt = publishedText;
+                }
+
+                string viewText = GetBestWatchPageViewText(body);
+
+                if (!string.IsNullOrWhiteSpace(viewText))
+                {
+                    CurrentVideo.Views = viewText;
                 }
 
                 if (string.IsNullOrWhiteSpace(CurrentVideo.Channel))
@@ -2263,6 +2329,24 @@ namespace SmoothTube
                 @"""viewCount"":\{""simpleText"":""(?<value>(?:\\.|[^""\\])*)""");
 
             return NormalizeViewText(viewText);
+        }
+
+        private static string GetBestWatchPagePublishedText(string body)
+        {
+            string publishedText = MatchJsonString(
+                body,
+                @"""publishedTimeText"":\{""simpleText"":""(?<value>(?:\\.|[^""\\])*)""");
+
+            if (!string.IsNullOrWhiteSpace(publishedText))
+            {
+                return publishedText.Trim();
+            }
+
+            publishedText = MatchJsonString(
+                body,
+                @"""dateText"":\{""simpleText"":""(?<value>(?:\\.|[^""\\])*)""");
+
+            return publishedText.Trim();
         }
 
         private static string NormalizeViewText(string value)
@@ -2884,8 +2968,7 @@ namespace SmoothTube
         private async Task EnrichCurrentVideoAsync()
         {
             if (CurrentVideo.Category != "YouTube" ||
-                string.IsNullOrWhiteSpace(CurrentVideo.Id) ||
-                !NeedsVideoDetails(CurrentVideo))
+                string.IsNullOrWhiteSpace(CurrentVideo.Id))
             {
                 return;
             }
@@ -2973,18 +3056,6 @@ namespace SmoothTube
             {
                 await LoadLiveChatAsync();
             }
-        }
-
-        private static bool NeedsVideoDetails(VideoItem video)
-        {
-            return string.IsNullOrWhiteSpace(video.Title) ||
-                video.Title == "YouTube video" ||
-                video.Title == "Loading..." ||
-                string.IsNullOrWhiteSpace(video.Channel) ||
-                string.IsNullOrWhiteSpace(video.Description) ||
-                string.IsNullOrWhiteSpace(video.Views) ||
-                string.IsNullOrWhiteSpace(video.Duration) ||
-                video.IsLive && string.IsNullOrWhiteSpace(video.LiveChatId);
         }
 
         private void NavigateToVideo(VideoItem video)

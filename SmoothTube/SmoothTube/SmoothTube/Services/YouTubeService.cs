@@ -1693,12 +1693,222 @@ namespace SmoothTube.Services
             if (string.IsNullOrWhiteSpace(channelId))
                 return [];
 
-            string uploadsPlaylistId =
-                await GetUploadsPlaylistIdAsync(
-                    channelId,
-                    cancellationToken);
+            string uploadsPlaylistId = "";
+
+            try
+            {
+                uploadsPlaylistId =
+                    await GetUploadsPlaylistIdAsync(
+                        channelId,
+                        cancellationToken);
+            }
+            catch (HttpRequestException)
+            {
+            }
+            catch (JsonException)
+            {
+            }
 
             if (string.IsNullOrWhiteSpace(uploadsPlaylistId))
+            {
+                uploadsPlaylistId =
+                    TryBuildUploadsPlaylistIdFromChannelId(channelId);
+            }
+
+            List<VideoItem> playlistVideos = [];
+
+            try
+            {
+                if (!string.IsNullOrWhiteSpace(uploadsPlaylistId))
+                {
+                    string? nextPageToken = null;
+
+                    do
+                    {
+                        int pageSize =
+                            Math.Min(50, Math.Max(1, maxResults - playlistVideos.Count));
+
+                        string requestUri =
+                            "https://www.googleapis.com/youtube/v3/playlistItems" +
+                            $"?part=snippet&maxResults={pageSize}" +
+                            $"&playlistId={Uri.EscapeDataString(uploadsPlaylistId)}";
+
+                        if (!string.IsNullOrWhiteSpace(nextPageToken))
+                        {
+                            requestUri +=
+                                $"&pageToken={Uri.EscapeDataString(nextPageToken)}";
+                        }
+
+                        using HttpResponseMessage response =
+                            await SendYouTubeGetAsync(
+                                requestUri,
+                                cancellationToken);
+
+                        response.EnsureSuccessStatusCode();
+
+                        await using var contentStream =
+                            await response.Content.ReadAsStreamAsync(cancellationToken);
+
+                        YouTubePlaylistItemsResponse? playlistResponse =
+                            await JsonSerializer.DeserializeAsync<YouTubePlaylistItemsResponse>(
+                                contentStream,
+                                JsonOptions,
+                                cancellationToken);
+
+                        playlistVideos.AddRange(
+                            playlistResponse?.Items?
+                            .Select(item => item.Snippet)
+                            .Where(snippet => !string.IsNullOrWhiteSpace(snippet?.ResourceId?.VideoId))
+                            .Select(snippet => new VideoItem
+                            {
+                                Id = snippet?.ResourceId?.VideoId ?? "",
+                                Title = Decode(snippet?.Title),
+                                Description = Decode(snippet?.Description),
+                                Channel = Decode(snippet?.ChannelTitle),
+                                ChannelId =
+                                    snippet?.VideoOwnerChannelId ??
+                                    snippet?.ChannelId ??
+                                    channelId,
+                                PublishedAt = FormatPublishedAt(snippet?.PublishedAt),
+                                PublishedAtSort = snippet?.PublishedAt,
+                                Thumbnail = GetBestVideoThumbnailUrl(
+                                    snippet?.ResourceId?.VideoId ?? "",
+                                    snippet?.Thumbnails?.Maxres?.Url ??
+                                    snippet?.Thumbnails?.Standard?.Url ??
+                                    snippet?.Thumbnails?.High?.Url ??
+                                    snippet?.Thumbnails?.Medium?.Url ??
+                                    snippet?.Thumbnails?.Default?.Url ??
+                                    ""),
+                                IsEmbeddable = true,
+                                Category = "YouTube"
+                            })
+                            .ToList() ?? []);
+
+                        nextPageToken = playlistResponse?.NextPageToken;
+                    }
+                    while (playlistVideos.Count < maxResults &&
+                        !string.IsNullOrWhiteSpace(nextPageToken));
+                }
+
+                await TryEnrichVideosAsync(playlistVideos, cancellationToken);
+                await TryEnrichVideosFromWatchPagesAsync(
+                    playlistVideos.Take(120),
+                    cancellationToken);
+
+                List<VideoItem> filteredVideos = playlistVideos
+                    .Where(video => video.IsEmbeddable)
+                    .ToList();
+
+                if (filteredVideos.Count >= maxResults)
+                {
+                    return filteredVideos
+                        .GroupBy(video => video.Id, StringComparer.OrdinalIgnoreCase)
+                        .Select(group => group.First())
+                        .OrderByDescending(GetPublishedAtSort)
+                        .Take(maxResults)
+                        .ToList();
+                }
+
+                List<VideoItem> searchVideos =
+                    await GetChannelVideosFromSearchAsync(
+                        channelId,
+                        maxResults,
+                        cancellationToken);
+
+                List<VideoItem> feedVideos =
+                    await GetChannelVideosFromFeedAsync(
+                        channelId,
+                        365,
+                        cancellationToken);
+
+                if (searchVideos.Count == 0 &&
+                    feedVideos.Count == 0 &&
+                    filteredVideos.Count > 0)
+                {
+                    return filteredVideos;
+                }
+
+                List<VideoItem> mergedVideos =
+                    filteredVideos
+                        .Concat(searchVideos)
+                        .Concat(feedVideos)
+                        .Where(video => !string.IsNullOrWhiteSpace(video.Id))
+                        .GroupBy(video => video.Id, StringComparer.OrdinalIgnoreCase)
+                        .Select(group => group.First())
+                        .OrderByDescending(GetPublishedAtSort)
+                        .Take(maxResults)
+                        .ToList();
+
+                if (mergedVideos.Count > 0)
+                {
+                    await EnrichDurationsBestEffortAsync(
+                        mergedVideos,
+                        cancellationToken);
+
+                    return mergedVideos;
+                }
+
+                if (filteredVideos.Count > 0)
+                    return filteredVideos;
+
+                return feedVideos
+                    .OrderByDescending(GetPublishedAtSort)
+                    .Take(maxResults)
+                    .ToList();
+            }
+            catch (HttpRequestException)
+            {
+                List<VideoItem> searchVideos =
+                    await GetChannelVideosFromSearchAsync(
+                        channelId,
+                        maxResults,
+                        cancellationToken);
+
+                if (searchVideos.Count > 0)
+                    return searchVideos;
+
+                return await GetChannelVideosFromFeedAsync(
+                    channelId,
+                    365,
+                    cancellationToken);
+            }
+            catch (JsonException)
+            {
+                List<VideoItem> searchVideos =
+                    await GetChannelVideosFromSearchAsync(
+                        channelId,
+                        maxResults,
+                        cancellationToken);
+
+                if (searchVideos.Count > 0)
+                    return searchVideos;
+
+                return await GetChannelVideosFromFeedAsync(
+                    channelId,
+                    365,
+                    cancellationToken);
+            }
+        }
+
+        private static string TryBuildUploadsPlaylistIdFromChannelId(
+            string channelId)
+        {
+            if (string.IsNullOrWhiteSpace(channelId) ||
+                !channelId.StartsWith("UC", StringComparison.OrdinalIgnoreCase) ||
+                channelId.Length <= 2)
+            {
+                return "";
+            }
+
+            return "UU" + channelId[2..];
+        }
+
+        private static async Task<List<VideoItem>> GetChannelVideosFromSearchAsync(
+            string channelId,
+            int maxResults,
+            CancellationToken cancellationToken)
+        {
+            if (string.IsNullOrWhiteSpace(channelId) || maxResults <= 0)
                 return [];
 
             try
@@ -1712,9 +1922,10 @@ namespace SmoothTube.Services
                         Math.Min(50, Math.Max(1, maxResults - videos.Count));
 
                     string requestUri =
-                        "https://www.googleapis.com/youtube/v3/playlistItems" +
-                        $"?part=snippet&maxResults={pageSize}" +
-                        $"&playlistId={Uri.EscapeDataString(uploadsPlaylistId)}";
+                        "https://www.googleapis.com/youtube/v3/search" +
+                        "?part=snippet&type=video&order=date" +
+                        $"&channelId={Uri.EscapeDataString(channelId)}" +
+                        $"&maxResults={pageSize}";
 
                     if (!string.IsNullOrWhiteSpace(nextPageToken))
                     {
@@ -1727,47 +1938,44 @@ namespace SmoothTube.Services
                             requestUri,
                             cancellationToken);
 
-                    response.EnsureSuccessStatusCode();
+                    if (!response.IsSuccessStatusCode)
+                        break;
 
                     await using var contentStream =
                         await response.Content.ReadAsStreamAsync(cancellationToken);
 
-                    YouTubePlaylistItemsResponse? playlistResponse =
-                        await JsonSerializer.DeserializeAsync<YouTubePlaylistItemsResponse>(
+                    YouTubeSearchResponse? searchResponse =
+                        await JsonSerializer.DeserializeAsync<YouTubeSearchResponse>(
                             contentStream,
                             JsonOptions,
                             cancellationToken);
 
                     videos.AddRange(
-                        playlistResponse?.Items?
-                        .Select(item => item.Snippet)
-                        .Where(snippet => !string.IsNullOrWhiteSpace(snippet?.ResourceId?.VideoId))
-                        .Select(snippet => new VideoItem
-                        {
-                            Id = snippet?.ResourceId?.VideoId ?? "",
-                            Title = Decode(snippet?.Title),
-                            Description = Decode(snippet?.Description),
-                            Channel = Decode(snippet?.ChannelTitle),
-                            ChannelId =
-                                snippet?.VideoOwnerChannelId ??
-                                snippet?.ChannelId ??
-                                channelId,
-                            PublishedAt = FormatPublishedAt(snippet?.PublishedAt),
-                            PublishedAtSort = snippet?.PublishedAt,
-                            Thumbnail = GetBestVideoThumbnailUrl(
-                                snippet?.ResourceId?.VideoId ?? "",
-                                snippet?.Thumbnails?.Maxres?.Url ??
-                                snippet?.Thumbnails?.Standard?.Url ??
-                                snippet?.Thumbnails?.High?.Url ??
-                                snippet?.Thumbnails?.Medium?.Url ??
-                                snippet?.Thumbnails?.Default?.Url ??
-                                ""),
-                            IsEmbeddable = true,
-                            Category = "YouTube"
-                        })
-                        .ToList() ?? []);
+                        searchResponse?.Items?
+                            .Where(item => !string.IsNullOrWhiteSpace(item.Id?.VideoId))
+                            .Select(item => new VideoItem
+                            {
+                                Id = item.Id?.VideoId ?? "",
+                                Title = Decode(item.Snippet?.Title),
+                                Description = Decode(item.Snippet?.Description),
+                                Channel = Decode(item.Snippet?.ChannelTitle),
+                                ChannelId = item.Snippet?.ChannelId ?? channelId,
+                                PublishedAt = FormatPublishedAt(item.Snippet?.PublishedAt),
+                                PublishedAtSort = item.Snippet?.PublishedAt,
+                                Thumbnail = GetBestVideoThumbnailUrl(
+                                    item.Id?.VideoId ?? "",
+                                    item.Snippet?.Thumbnails?.Maxres?.Url ??
+                                    item.Snippet?.Thumbnails?.Standard?.Url ??
+                                    item.Snippet?.Thumbnails?.High?.Url ??
+                                    item.Snippet?.Thumbnails?.Medium?.Url ??
+                                    item.Snippet?.Thumbnails?.Default?.Url ??
+                                    ""),
+                                IsEmbeddable = true,
+                                Category = "YouTube"
+                            })
+                            .ToList() ?? []);
 
-                    nextPageToken = playlistResponse?.NextPageToken;
+                    nextPageToken = searchResponse?.NextPageToken;
                 }
                 while (videos.Count < maxResults &&
                     !string.IsNullOrWhiteSpace(nextPageToken));
@@ -1777,31 +1985,26 @@ namespace SmoothTube.Services
                     videos.Take(120),
                     cancellationToken);
 
-                List<VideoItem> filteredVideos = videos
+                return videos
+                    .Where(video => !string.IsNullOrWhiteSpace(video.Id))
                     .Where(video => video.IsEmbeddable)
+                    .GroupBy(video => video.Id, StringComparer.OrdinalIgnoreCase)
+                    .Select(group => group.First())
+                    .OrderByDescending(GetPublishedAtSort)
+                    .Take(maxResults)
                     .ToList();
-
-                if (filteredVideos.Count > 0)
-                    return filteredVideos;
-
-                return await GetChannelVideosFromFeedAsync(
-                    channelId,
-                    365,
-                    cancellationToken);
             }
             catch (HttpRequestException)
             {
-                return await GetChannelVideosFromFeedAsync(
-                    channelId,
-                    365,
-                    cancellationToken);
+                return [];
             }
             catch (JsonException)
             {
-                return await GetChannelVideosFromFeedAsync(
-                    channelId,
-                    365,
-                    cancellationToken);
+                return [];
+            }
+            catch (TaskCanceledException)
+            {
+                return [];
             }
         }
 
@@ -3205,7 +3408,68 @@ namespace SmoothTube.Services
             if (value == null)
                 return "";
 
-            return value.Value.ToLocalTime().ToString("MMM d, yyyy", CultureInfo.CurrentCulture);
+            return FormatRelativePublishedAt(value.Value);
+        }
+
+        private static string FormatRelativePublishedAt(DateTimeOffset value)
+        {
+            DateTimeOffset publishedAt = value.ToLocalTime();
+            DateTimeOffset now = DateTimeOffset.Now;
+
+            if (publishedAt > now)
+            {
+                publishedAt = now;
+            }
+
+            TimeSpan age = now - publishedAt;
+
+            if (age.TotalMinutes < 1)
+                return "Just now";
+
+            if (age.TotalHours < 1)
+            {
+                int minutes = Math.Max(1, (int)Math.Floor(age.TotalMinutes));
+                return minutes == 1
+                    ? "1 minute ago"
+                    : $"{minutes} minutes ago";
+            }
+
+            if (age.TotalDays < 1)
+            {
+                int hours = Math.Max(1, (int)Math.Floor(age.TotalHours));
+                return hours == 1
+                    ? "1 hour ago"
+                    : $"{hours} hours ago";
+            }
+
+            if (age.TotalDays < 7)
+            {
+                int days = Math.Max(1, (int)Math.Floor(age.TotalDays));
+                return days == 1
+                    ? "1 day ago"
+                    : $"{days} days ago";
+            }
+
+            if (age.TotalDays < 30)
+            {
+                int weeks = Math.Max(1, (int)Math.Floor(age.TotalDays / 7));
+                return weeks == 1
+                    ? "1 week ago"
+                    : $"{weeks} weeks ago";
+            }
+
+            if (age.TotalDays < 365)
+            {
+                int months = Math.Max(1, (int)Math.Floor(age.TotalDays / 30));
+                return months == 1
+                    ? "1 month ago"
+                    : $"{months} months ago";
+            }
+
+            int years = Math.Max(1, (int)Math.Floor(age.TotalDays / 365));
+            return years == 1
+                ? "1 year ago"
+                : $"{years} years ago";
         }
 
         private static List<VideoItem> FilterSubscribedVideos(
@@ -3368,6 +3632,8 @@ namespace SmoothTube.Services
         private sealed class YouTubeSearchResponse
         {
             public List<YouTubeSearchItem>? Items { get; set; }
+
+            public string? NextPageToken { get; set; }
         }
 
         private sealed class YouTubeSearchItem
